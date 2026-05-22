@@ -14,6 +14,7 @@ from agents.langgraph_supervisor_hierarchy_agent import langgraph_supervisor_hie
 from agents.lazy_agent import LazyLoadingAgent
 from agents.rag_assistant import rag_assistant
 from agents.research_assistant import research_assistant
+from agents.chinese_assistant import chinese_assistant
 from schema import AgentInfo
 
 DEFAULT_AGENT = "research-assistant"
@@ -60,6 +61,9 @@ agents: dict[str, Agent] = {
     "github-mcp-agent": Agent(
         description="A GitHub agent with MCP tools for repository management and development workflows.",
         graph_like=github_mcp_agent,
+    ),
+    "chinese-assistant": Agent(
+        description="一个简洁、务实的中文助手。", graph_like=chinese_assistant
     ),
 }
 

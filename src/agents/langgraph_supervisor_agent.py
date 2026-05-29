@@ -2,6 +2,7 @@ from typing import Any
 
 from langchain.agents import create_agent
 from langgraph_supervisor import create_supervisor
+from agents.reflective_agent import reflective_agent
 
 from core import get_model, settings
 
@@ -47,16 +48,17 @@ research_agent: Any = create_agent(
 
 # Create supervisor workflow
 workflow = create_supervisor(
-    [research_agent, math_agent],
+    [research_agent, math_agent, reflective_agent], # 将 reflective_agent 加入团队
     model=model,
     prompt=(
-        "You are a team supervisor managing a research expert and a math expert. "
-        "For current events, use research_agent. "
-        "For math problems, use math_agent."
+        "你是一个团队管理者。你有三名专家：\n"
+        "1. research_agent: 负责网页搜索。\n"
+        "2. math_expert: 负责数学计算。\n"
+        "3. reflective_agent: 负责高质量的文案创作和深度评论，它会自动进行自我反思和纠错。\n"
+        "请根据用户需求选择合适的专家。"
     ),
     add_handoff_back_messages=True,
-    # UI now expects this to be True so we don't have to guess when a handoff back occurs
-    output_mode="full_history",  # otherwise when reloading conversations, the sub-agents' messages are not included
+    output_mode="full_history",
 )
 
 langgraph_supervisor_agent = workflow.compile()

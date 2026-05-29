@@ -83,4 +83,4 @@ builder.add_conditional_edges("generate", should_continue, {
 # reflect -> 必定回到 generate 进行修改
 builder.add_edge("reflect", "generate")
 
-reflective_agent = builder.compile()
+reflective_agent = builder.compile(name="reflective_agent")

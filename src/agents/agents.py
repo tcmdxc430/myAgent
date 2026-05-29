@@ -17,6 +17,7 @@ from agents.sql_assistant import sql_assistant
 from agents.research_assistant import research_assistant
 from agents.chinese_assistant import chinese_assistant
 from agents.structured_output_agent import structured_output_agent
+from agents.reflective_agent import reflective_agent
 from schema import AgentInfo
 
 DEFAULT_AGENT = "research-assistant"
@@ -74,6 +75,10 @@ agents: dict[str, Agent] = {
     "structured-output-agent": Agent(
         description="一个演示如何输出结构化 JSON 的智能体。",
         graph_like=structured_output_agent
+    ),
+    "reflective-agent": Agent(
+        description="一个会自动进行自我反思和纠错的写作专家。", 
+        graph_like=reflective_agent
     ),
 }
 

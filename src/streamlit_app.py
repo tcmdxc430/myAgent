@@ -119,7 +119,7 @@ async def main() -> None:
         st.header(f"{APP_ICON} {APP_TITLE}")
 
         ""
-        "创造更多可能"
+        "对话创造更多可能"
         ""
 
         if st.button(":material/chat: 新对话", use_container_width=True):
@@ -158,19 +158,6 @@ async def main() -> None:
             # Display user ID (for debugging or user information)
             st.text_input("用户 ID (只读)", value=user_id, disabled=True)
 
-        @st.dialog("架构图")
-        def architecture_dialog() -> None:
-            st.image(
-                "https://github.com/JoshuaC215/agent-service-toolkit/blob/main/media/agent_architecture.png?raw=true"
-            )
-            "[在 Github 查看大图](https://github.com/JoshuaC215/agent-service-toolkit/blob/main/media/agent_architecture.png)"
-            st.caption(
-                "应用托管在 [Streamlit Cloud](https://share.streamlit.io/)，FastAPI 服务运行在 [Azure](https://learn.microsoft.com/en-us/azure/app-service/)"
-            )
-
-        if st.button(":material/schema: 架构图", use_container_width=True):
-            architecture_dialog()
-
         with st.popover(":material/policy: 隐私", use_container_width=True):
             st.write(
                 "此应用中的提示词、响应和反馈将匿名记录并保存到 LangSmith，仅用于产品评估和改进目的。"
@@ -195,7 +182,6 @@ async def main() -> None:
         if st.button(":material/upload: 分享/恢复对话", use_container_width=True):
             share_chat_dialog()
 
-        "[查看源代码](https://github.com/JoshuaC215/agent-service-toolkit)"
 
 
     # 绘制现有消息

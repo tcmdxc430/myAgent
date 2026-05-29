@@ -6,52 +6,52 @@ from schema import ChatMessage
 
 
 async def amain() -> None:
-    #### ASYNC ####
+    #### 异步 ####
     client = AgentClient(settings.BASE_URL)
 
-    print("Agent info:")
+    print("智能体信息:")
     print(client.info)
 
-    print("Chat example:")
-    response = await client.ainvoke("Tell me a brief joke?", model="gpt-5-nano")
+    print("聊天示例:")
+    response = await client.ainvoke("给我讲个笑话？", model="gpt-5-nano")
     response.pretty_print()
 
-    print("\nStream example:")
-    async for message in client.astream("Share a quick fun fact?"):
+    print("\n流式输出示例:")
+    async for message in client.astream("分享一个有趣的冷知识？"):
         if isinstance(message, str):
             print(message, flush=True, end="")
         elif isinstance(message, ChatMessage):
             print("\n", flush=True)
             message.pretty_print()
         else:
-            print(f"ERROR: Unknown type - {type(message)}")
+            print(f"错误: 未知类型 - {type(message)}")
 
 
 def main() -> None:
-    #### SYNC ####
+    #### 同步 ####
     client = AgentClient(settings.BASE_URL)
 
-    print("Agent info:")
+    print("智能体信息:")
     print(client.info)
 
-    print("Chat example:")
-    response = client.invoke("Tell me a brief joke?", model="gpt-5-nano")
+    print("聊天示例:")
+    response = client.invoke("给我讲个笑话？", model="gpt-5-nano")
     response.pretty_print()
 
-    print("\nStream example:")
-    for message in client.stream("Share a quick fun fact?"):
+    print("\n流式输出示例:")
+    for message in client.stream("分享一个有趣的冷知识？"):
         if isinstance(message, str):
             print(message, flush=True, end="")
         elif isinstance(message, ChatMessage):
             print("\n", flush=True)
             message.pretty_print()
         else:
-            print(f"ERROR: Unknown type - {type(message)}")
+            print(f"错误: 未知类型 - {type(message)}")
 
 
 if __name__ == "__main__":
-    print("Running in sync mode")
+    print("正在以同步模式运行")
     main()
     print("\n\n\n\n\n")
-    print("Running in async mode")
+    print("正在以异步模式运行")
     asyncio.run(amain())

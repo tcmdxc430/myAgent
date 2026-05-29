@@ -18,13 +18,13 @@ if __name__ == "__main__":
         )
 
     logging.basicConfig(level=settings.LOG_LEVEL.to_logging_level())
-    # Set Compatible event loop policy on Windows Systems.
-    # On Windows systems, the default ProactorEventLoop can cause issues with
-    # certain async database drivers like psycopg (PostgreSQL driver).
-    # The WindowsSelectorEventLoopPolicy provides better compatibility and prevents
-    # "RuntimeError: Event loop is closed" errors when working with database connections.
-    # This needs to be set before running the application server.
-    # Refer to the documentation for more information.
+    # 在 Windows 系统上设置兼容的事件循环策略。
+    # 在 Windows 系统上，默认的 ProactorEventLoop 可能会导致某些异步数据库驱动程序
+    #（如 psycopg，PostgreSQL 驱动程序）出现问题。
+    # WindowsSelectorEventLoopPolicy 提供了更好的兼容性，并防止在处理数据库连接时
+    # 出现 "RuntimeError: Event loop is closed" 错误。
+    # 这需要在运行应用服务器之前进行设置。
+    # 有关更多信息，请参阅文档。
     # https://www.psycopg.org/psycopg3/docs/advanced/async.html#asynchronous-operations
     if sys.platform == "win32":
         asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())

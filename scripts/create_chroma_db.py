@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_chroma import Chroma
 from langchain_community.document_loaders import Docx2txtLoader, PyPDFLoader
-from langchain_openai import OpenAIEmbeddings
+from langchain_huggingface import HuggingFaceEmbeddings
 
 # Load environment variables from the .env file
 load_dotenv()
@@ -18,7 +18,8 @@ def create_chroma_db(
     chunk_size: int = 2000,
     overlap: int = 500,
 ):
-    embeddings = OpenAIEmbeddings(api_key=os.environ["OPENAI_API_KEY"])
+    # 使用 HuggingFace 的本地向量模型
+    embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
 
     # Initialize Chroma vector store
     if delete_chroma_db and os.path.exists(db_name):
@@ -34,11 +35,14 @@ def create_chroma_db(
     text_splitter = RecursiveCharacterTextSplitter(chunk_size=chunk_size, chunk_overlap=overlap)
 
     # Iterate over files in the folder
+    if not os.path.exists(folder_path):
+        print(f"Error: Folder {folder_path} does not exist.")
+        return None
+
     for filename in os.listdir(folder_path):
         file_path = os.path.join(folder_path, filename)
 
         # Load document based on file extension
-        # Add more loaders if required, i.e. JSONLoader, TxtLoader, etc.
         if filename.endswith(".pdf"):
             loader = PyPDFLoader(file_path)
         elif filename.endswith(".docx"):
@@ -71,13 +75,14 @@ if __name__ == "__main__":
     # Create the Chroma database
     chroma = create_chroma_db(folder_path=folder_path)
 
-    # Create retriever from the Chroma database
-    retriever = chroma.as_retriever(search_kwargs={"k": 3})
+    if chroma:
+        # Create retriever from the Chroma database
+        retriever = chroma.as_retriever(search_kwargs={"k": 3})
 
-    # Perform a similarity search
-    query = "What's my company's mission and values"
-    similar_docs = retriever.invoke(query)
+        # Perform a similarity search
+        query = "What's my company's mission and values"
+        similar_docs = retriever.invoke(query)
 
-    # Display results
-    for i, doc in enumerate(similar_docs, start=1):
-        print(f"\n🔹 Result {i}:\n{doc.page_content}\nTags: {doc.metadata.get('source', [])}")
+        # Display results
+        for i, doc in enumerate(similar_docs, start=1):
+            print(f"\n🔹 Result {i}:\n{doc.page_content}\nTags: {doc.metadata.get('source', [])}")

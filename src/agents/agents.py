@@ -13,8 +13,10 @@ from agents.langgraph_supervisor_agent import langgraph_supervisor_agent
 from agents.langgraph_supervisor_hierarchy_agent import langgraph_supervisor_hierarchy_agent
 from agents.lazy_agent import LazyLoadingAgent
 from agents.rag_assistant import rag_assistant
+from agents.sql_assistant import sql_assistant
 from agents.research_assistant import research_assistant
 from agents.chinese_assistant import chinese_assistant
+from agents.structured_output_agent import structured_output_agent
 from schema import AgentInfo
 
 DEFAULT_AGENT = "research-assistant"
@@ -42,6 +44,10 @@ agents: dict[str, Agent] = {
         description="A RAG assistant with access to information in a database.",
         graph_like=rag_assistant,
     ),
+    "sql-assistant": Agent(
+        description="一个专业的 SQL 查询助手，可以查询业务数据库。",
+        graph_like=sql_assistant,
+    ),
     "command-agent": Agent(description="A command agent.", graph_like=command_agent),
     "bg-task-agent": Agent(description="A background task agent.", graph_like=bg_task_agent),
     "langgraph-supervisor-agent": Agent(
@@ -64,6 +70,10 @@ agents: dict[str, Agent] = {
     ),
     "chinese-assistant": Agent(
         description="一个简洁、务实的中文助手。", graph_like=chinese_assistant
+    ),
+    "structured-output-agent": Agent(
+        description="一个演示如何输出结构化 JSON 的智能体。",
+        graph_like=structured_output_agent
     ),
 }
 

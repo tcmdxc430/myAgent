@@ -129,12 +129,11 @@ async def _handle_input(user_input: UserInput, agent: AgentGraph) -> tuple[dict[
     if user_input.model is not None:
         configurable["model"] = user_input.model
 
-    callbacks: list[Any] = []
+    callbacks: list[Any] | None = None
     if settings.LANGFUSE_TRACING:
         # Initialize Langfuse CallbackHandler for Langchain (tracing)
         langfuse_handler = CallbackHandler()
-
-        callbacks.append(langfuse_handler)
+        callbacks = [langfuse_handler]
 
     if user_input.agent_config:
         # Check for reserved keys (including 'model' even if not in configurable)

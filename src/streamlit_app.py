@@ -398,13 +398,31 @@ async def draw_messages(
                             call_results[tool_call["id"]] = status
 
                         # Expect one ToolMessage for each tool call.
+                        transfer_tool_call = None
                         for tool_call in msg.tool_calls:
                             if "transfer_to" in tool_call["name"]:
-                                status = call_results[tool_call["id"]]
-                                status.update(expanded=True)
-                                await handle_sub_agent_msgs(messages_agen, status, is_new)
+                                transfer_tool_call = tool_call
                                 break
 
+                        if transfer_tool_call:
+                            status = call_results[transfer_tool_call["id"]]
+                            status.update(expanded=True)
+                            returned_msg = await handle_sub_agent_msgs(messages_agen, status, is_new)
+                            # Reset all tracking variables to force a fresh container
+                            last_message_type = None
+                            st.session_state.last_message = None
+                            streaming_content = ""
+                            streaming_placeholder = None
+
+                            # If a human message was returned, draw it now
+                            if returned_msg:
+                                last_message_type = "human"
+                                st.chat_message("human", avatar="👤").write(returned_msg.content)
+                                if is_new:
+                                    st.session_state.messages.append(returned_msg)
+                            continue
+
+                        for tool_call in msg.tool_calls:
                             # Only non-transfer tool calls reach this point
                             status = call_results[tool_call["id"]]
                             status.write("输入:")
@@ -504,18 +522,29 @@ async def handle_sub_agent_msgs(messages_agen, status, is_new):
     nested_popovers = {}
 
     # looking for the transfer Success tool call message
-    first_msg = await anext(messages_agen)
+    while True:
+        first_msg = await anext(messages_agen)
+        if not isinstance(first_msg, str):
+            break
     if is_new:
         st.session_state.messages.append(first_msg)
 
-    # Continue reading until we get an explicit handoff back
+    # Continue reading until we get an explicit handoff back or the stream ends
     while True:
         # Read next message
-        sub_msg = await anext(messages_agen)
+        try:
+            sub_msg = await anext(messages_agen)
+        except StopAsyncIteration:
+            break
 
-        # this should only happen is skip_stream flag is removed
-        # if isinstance(sub_msg, str):
-        #     continue
+        # Skip tokens (strings) and only process ChatMessage objects
+        if isinstance(sub_msg, str):
+            continue
+
+        # If we encounter a human message, it means the sub-agent's turn is over
+        # and a new interaction has started. Return the message so the main loop can draw it.
+        if sub_msg.type == "human":
+            return sub_msg
 
         if is_new:
             st.session_state.messages.append(sub_msg)

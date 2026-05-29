@@ -125,6 +125,9 @@ class Settings(BaseSettings):
     )  # Options: DatabaseType.SQLITE or DatabaseType.POSTGRES
     SQLITE_DB_PATH: str = "checkpoints.db"
 
+    # Business Database Configuration (for Text-to-SQL)
+    BUSINESS_DB_URL: SecretStr | None = None
+
     # PostgreSQL Configuration
     POSTGRES_USER: str | None = None
     POSTGRES_PASSWORD: SecretStr | None = None

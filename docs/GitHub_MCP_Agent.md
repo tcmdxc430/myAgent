@@ -54,7 +54,7 @@ Once configured, the GitHub MCP Agent will be available as `github-mcp-agent` in
 
 Here are some example prompts you can use with the GitHub MCP Agent:
 
-- **"Describe the JoshuaC215/agent-service-toolkit repository"** - Shows repository information and README content
+- **"Describe the devindong/myAgent repository"** - Shows repository information and README content
 - **"List the recent commits in this repository"** - Displays recent commit history
 - **"What files are in the src directory?"** - Lists files in a specific directory
 - **"Show me the README file"** - Displays repository README content

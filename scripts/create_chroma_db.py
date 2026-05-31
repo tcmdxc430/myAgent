@@ -1,10 +1,16 @@
 import os
 import shutil
+import sys
+
+try:
+    sys.stdout.reconfigure(encoding='utf-8')
+except AttributeError:
+    pass
 
 from dotenv import load_dotenv
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_chroma import Chroma
-from langchain_community.document_loaders import Docx2txtLoader, PyPDFLoader
+from langchain_community.document_loaders import Docx2txtLoader, PyPDFLoader, TextLoader
 from langchain_huggingface import HuggingFaceEmbeddings
 
 # Load environment variables from the .env file
@@ -47,6 +53,8 @@ def create_chroma_db(
             loader = PyPDFLoader(file_path)
         elif filename.endswith(".docx"):
             loader = Docx2txtLoader(file_path)
+        elif filename.endswith(".txt") or filename.endswith(".md"):
+            loader = TextLoader(file_path, encoding="utf-8")
         else:
             continue  # Skip unsupported file types
 

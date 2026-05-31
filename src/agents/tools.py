@@ -207,3 +207,73 @@ def execute_sql(sql_query: str) -> str:
         return json.dumps(result_list, indent=2, ensure_ascii=False)
     except Exception as e:
         return f"Error executing SQL: {e}"
+
+import sys
+import io
+import traceback
+import os
+from langchain_core.tools import tool
+
+# 创建一个专门存放生成图表的目录
+# 这个目录会被 Streamlit 访问，用来向用户展示生成的图表
+CHARTS_DIR = "charts"
+os.makedirs(CHARTS_DIR, exist_ok=True)
+
+@tool
+def execute_python_code(code: str) -> str:
+    """
+    执行一段用于数据分析的 Python 代码，并返回代码在控制台的输出结果。
+    你可以使用 pandas, numpy, matplotlib 和 seaborn。
+    
+    【重要绘图规则】
+    1. 如果你需要绘制图表，请【必须】将图表保存到 'charts/' 目录下（例如：plt.savefig('charts/sales_trend.png')）。
+    2. 为了防止绘图时控制台卡死，代码最开始必须引入：
+       import matplotlib
+       matplotlib.use('Agg')
+    3. 为了让图表正常显示中文，请设置：
+       plt.rcParams['font.sans-serif'] = ['SimHei']  # Windows系统推荐
+       plt.rcParams['axes.unicode_minus'] = False     # 正常显示负号
+    
+    Args:
+        code (str): 需要运行的、完整的、合法的 Python 代码字符串。
+        
+    Returns:
+        str: 控制台标准输出(STDOUT)和标准错误(STDERR)的内容，或执行报错时的异常堆栈。
+    """
+    # 强制在执行代码前注入 Agg 后端，双重保险
+    if "matplotlib" in code and "matplotlib.use" not in code:
+        code = "import matplotlib; matplotlib.use('Agg')\n" + code
+
+    # 重定向控制台输出
+    old_stdout = sys.stdout
+    old_stderr = sys.stderr
+    redirected_output = sys.stdout = io.StringIO()
+    redirected_error = sys.stderr = io.StringIO()
+
+    try:
+        # 执行代码
+        # 创建一个沙箱字典作为局部变量域，避免污染全局变量
+        exec_globals = {}
+        exec(code, exec_globals)
+        
+        stdout_val = redirected_output.getvalue()
+        stderr_val = redirected_error.getvalue()
+        
+        output = []
+        if stdout_val:
+            output.append(f"【控制台输出】:\n{stdout_val}")
+        if stderr_val:
+            output.append(f"【控制台警告/错误】:\n{stderr_val}")
+        if not stdout_val and not stderr_val:
+            output.append("代码执行成功，但控制台没有产生任何输出。")
+            
+        return "\n".join(output)
+        
+    except Exception as e:
+        # 捕获运行代码时的任何异常，并格式化成易读的报错信息返回给 Agent，方便它自我纠错
+        return f"【代码执行失败，报错堆栈如下】:\n{traceback.format_exc()}"
+        
+    finally:
+        # 恢复控制台默认输出
+        sys.stdout = old_stdout
+        sys.stderr = old_stderr

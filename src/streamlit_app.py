@@ -182,6 +182,19 @@ async def main() -> None:
         if st.button(":material/upload: 分享/恢复对话", use_container_width=True):
             share_chat_dialog()
 
+        # 如果当前选择的是数据分析智能体，显示文件上传控件
+        if agent_client.agent == "data-analyst-assistant":
+            st.markdown("---")
+            st.subheader("📊 上传分析数据")
+            uploaded_file = st.file_uploader("上传 CSV 格式数据文件", type=["csv"])
+            if uploaded_file is not None:
+                # 确保 data 目录存在
+                os.makedirs("data", exist_ok=True)
+                # 保存为指定的文件名 data/uploaded_data.csv
+                with open("data/uploaded_data.csv", "wb") as f:
+                    f.write(uploaded_file.getbuffer())
+                st.success(f"✅ 文件 '{uploaded_file.name}' 上传成功！你可以开始在聊天框提问进行分析了。")
+
 
 
     # 绘制现有消息
@@ -198,6 +211,9 @@ async def main() -> None:
             case "rag-assistant":
                 WELCOME = """你好！我是 AI 驱动的公司政策和人力资源助手，可以访问 AcmeTech 的员工手册。
                 我可以帮你查找有关福利、远程办公、休假政策、公司价值观等信息。问我任何问题吧！"""
+            case "data-analyst-assistant":
+                WELCOME = """你好！我是你的专属 AI 数据分析科学家。⚙️
+                请先在左侧边栏上传你的 CSV 文件，然后告诉我你想要进行什么分析、画什么图表，或者让我直接为你做一份全面分析！"""
             case _:
                 WELCOME = "你好！我是 AI 智能体。问我任何问题吧！"
 

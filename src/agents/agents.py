@@ -18,6 +18,7 @@ from agents.research_assistant import research_assistant
 from agents.chinese_assistant import chinese_assistant
 from agents.structured_output_agent import structured_output_agent
 from agents.reflective_agent import reflective_agent
+from agents.data_analyst_agent import data_analyst_agent
 from schema import AgentInfo
 
 DEFAULT_AGENT = "research-assistant"
@@ -79,6 +80,10 @@ agents: dict[str, Agent] = {
     "reflective-agent": Agent(
         description="一个会自动进行自我反思和纠错的写作专家。", 
         graph_like=reflective_agent
+    ),
+    "data-analyst-assistant": Agent(
+        description="一个随身数据分析科学家，支持上传 CSV 文件进行自动清洗、Python 数据分析和图表绘制。",
+        graph_like=data_analyst_agent,
     ),
 }
 

@@ -162,6 +162,82 @@ class FeedbackResponse(BaseModel):
     status: Literal["success"] = "success"
 
 
+class XhsIngestInput(BaseModel):
+    """Input for importing a Xiaohongshu note into the RAG knowledge base."""
+
+    url: str = Field(
+        description="Xiaohongshu share URL or canonical note URL.",
+        examples=["https://www.xiaohongshu.com/explore/abc123"],
+    )
+    force_refresh: bool = Field(
+        description="Whether to refresh and rebuild an existing imported note.",
+        default=False,
+    )
+
+
+class ArticleIngestInput(BaseModel):
+    """Input for importing a public graphic/text article into the RAG knowledge base."""
+
+    url: str = Field(
+        description="Public article URL, including Xiaohongshu and other graphic/text pages.",
+        examples=["https://example.com/articles/abc123"],
+    )
+    force_refresh: bool = Field(
+        description="Whether to refresh and rebuild existing imported content.",
+        default=False,
+    )
+
+
+class XhsLoginResponse(BaseModel):
+    status: Literal["started"] = "started"
+    message: str
+
+
+class XhsIngestResponse(BaseModel):
+    status: Literal[
+        "success",
+        "login_required",
+        "failed",
+        "skipped",
+        "partial_success",
+    ]
+    message: str
+    article_id: str | None = None
+    title: str | None = None
+    source_url: str | None = None
+    chunk_count: int = 0
+    asset_count: int = 0
+    ocr_failed_count: int = 0
+    needs_login: bool = False
+
+
+ArticleIngestResponse = XhsIngestResponse
+
+
+class QbitaiHotNewsImportItem(BaseModel):
+    """Result for one QbitAI hot news article import."""
+
+    rank: int
+    title: str
+    url: str
+    published_at: str | None = None
+    status: Literal["success", "partial_success", "failed", "skipped"]
+    message: str
+    article_id: str | None = None
+    chunk_count: int = 0
+
+
+class QbitaiHotNewsImportResponse(BaseModel):
+    """Response for importing QbitAI hot news into the RAG knowledge base."""
+
+    status: Literal["success", "partial_success", "failed"]
+    message: str
+    source_url: str
+    item_count: int
+    imported_count: int
+    items: list[QbitaiHotNewsImportItem]
+
+
 class ChatHistoryInput(BaseModel):
     """Input for retrieving chat history."""
 

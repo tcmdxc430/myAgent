@@ -86,6 +86,8 @@ class Settings(BaseSettings):
     GOOGLE_API_KEY: SecretStr | None = None
     GOOGLE_APPLICATION_CREDENTIALS: SecretStr | None = None
     GROQ_API_KEY: SecretStr | None = None
+    BAIDU_OCR_API_KEY: SecretStr | None = None
+    BAIDU_OCR_SECRET_KEY: SecretStr | None = None
     USE_AWS_BEDROCK: bool = False
     OLLAMA_MODEL: str | None = None
     OLLAMA_BASE_URL: str | None = None
@@ -127,6 +129,14 @@ class Settings(BaseSettings):
 
     # Business Database Configuration (for Text-to-SQL)
     BUSINESS_DB_URL: SecretStr | None = None
+
+    # QbitAI hot news ingestion
+    QBITAI_HOT_NEWS_ENABLED: bool = True
+    QBITAI_HOT_NEWS_URL: str = "https://www.qbitai.com/category/%e8%b5%84%e8%ae%af"
+    QBITAI_HOT_NEWS_DAILY_HOUR: int = 15
+    QBITAI_HOT_NEWS_DAILY_MINUTE: int = 0
+    QBITAI_HOT_NEWS_LIMIT: int = 3
+    QBITAI_HOT_NEWS_TIMEZONE: str = "Asia/Shanghai"
 
     # PostgreSQL Configuration
     POSTGRES_USER: str | None = None

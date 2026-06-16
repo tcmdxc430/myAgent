@@ -41,6 +41,12 @@ class TestAgentLoading:
         agent = get_agent("chatbot")
         assert agent is not None
 
+    def test_technical_report_agent_registered(self):
+        """Test that the technical report agent is available."""
+        assert "technical-report-agent" in agents
+        agent = get_agent("technical-report-agent")
+        assert agent is not None
+
     def test_get_agent_lazy_agent_not_loaded(self):
         """Test getting a lazy agent that hasn't been loaded."""
         mock_agent = Mock(spec=LazyLoadingAgent)
@@ -48,7 +54,7 @@ class TestAgentLoading:
 
         with patch.dict(agents, {"test-lazy-agent": Mock(graph_like=mock_agent)}):
             with pytest.raises(
-                RuntimeError, match="Agent test-lazy-agent not loaded. Call load\\(\\) first."
+                RuntimeError, match="智能体 test-lazy-agent 未加载。请先调用 load\\(\\)。"
             ):
                 get_agent("test-lazy-agent")
 

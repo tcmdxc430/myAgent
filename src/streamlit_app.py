@@ -130,7 +130,7 @@ async def main() -> None:
                 del st.session_state.last_audio
             st.rerun()
 
-        with st.popover(":material/settings: 设置", use_container_width=True):
+        with st.expander(":material/settings: 设置", expanded=False):
             model_idx = agent_client.info.models.index(agent_client.info.default_model)
             model = st.selectbox("使用的模型", options=agent_client.info.models, index=model_idx)
             agent_list = [a.key for a in agent_client.info.agents]
@@ -158,11 +158,6 @@ async def main() -> None:
             # Display user ID (for debugging or user information)
             st.text_input("用户 ID (只读)", value=user_id, disabled=True)
 
-        with st.popover(":material/policy: 隐私", use_container_width=True):
-            st.write(
-                "此应用中的提示词、响应和反馈将匿名记录并保存到 LangSmith，仅用于产品评估和改进目的。"
-            )
-
         @st.dialog("分享/恢复对话")
         def share_chat_dialog() -> None:
             session = st.runtime.get_instance()._session_mgr.list_active_sessions()[0]
@@ -181,6 +176,49 @@ async def main() -> None:
 
         if st.button(":material/upload: 分享/恢复对话", use_container_width=True):
             share_chat_dialog()
+
+        with st.popover(":material/bookmark_add: 图文链接导入", use_container_width=True):
+            st.caption("导入小红书、网页文章等图文内容到 RAG 知识库")
+            article_url = st.text_input("图文文章链接", key="article_ingest_url")
+            force_refresh = st.checkbox("强制刷新已导入内容", value=False)
+            col_import, col_login = st.columns(2)
+
+            if col_import.button("导入", use_container_width=True):
+                if not article_url.strip():
+                    st.warning("请先填写图文文章链接。")
+                else:
+                    with st.spinner("正在抓取并写入知识库..."):
+                        try:
+                            st.session_state.article_ingest_result = (
+                                await agent_client.aingest_article(
+                                    article_url.strip(), force_refresh=force_refresh
+                                )
+                            )
+                        except AgentClientError as e:
+                            st.error(f"导入失败: {e}")
+
+            if col_login.button("登录小红书", use_container_width=True):
+                try:
+                    login_response = await agent_client.aopen_xhs_login()
+                    st.info(login_response.message)
+                except AgentClientError as e:
+                    st.error(f"打开登录窗口失败: {e}")
+
+            result = st.session_state.get("article_ingest_result")
+            if result:
+                match result.status:
+                    case "success":
+                        st.success(f"导入成功: {result.title or result.source_url}")
+                    case "partial_success":
+                        st.warning(f"导入完成，但 {result.ocr_failed_count} 张图片 OCR 失败。")
+                    case "login_required":
+                        st.warning("需要先登录对应平台。小红书可点击上方“登录小红书”后重试。")
+                    case "skipped":
+                        st.info(result.message)
+                    case _:
+                        st.error(result.message)
+                if result.chunk_count:
+                    st.caption(f"已写入 {result.chunk_count} 个 RAG chunk。")
 
         # 如果当前选择的是数据分析智能体，显示文件上传控件
         if agent_client.agent == "data-analyst-assistant":
@@ -214,6 +252,9 @@ async def main() -> None:
             case "data-analyst-assistant":
                 WELCOME = """你好！我是你的专属 AI 数据分析科学家。⚙️
                 请先在左侧边栏上传你的 CSV 文件，然后告诉我你想要进行什么分析、画什么图表，或者让我直接为你做一份全面分析！"""
+            case "technical-report-agent":
+                WELCOME = """你好！我是技术报告写作智能体。
+                我会基于已导入的网页 URL 或文档知识库，按规范结构生成政策合规、表达稳妥的技术报告。"""
             case _:
                 WELCOME = "你好！我是 AI 智能体。问我任何问题吧！"
 

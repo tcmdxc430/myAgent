@@ -57,6 +57,10 @@ dependencies = [
     "uvicorn ~=0.32.1",
     "langchain-mcp-adapters>=0.1.10",
     "ddgs>=9.9.1",
+    "langchain-huggingface>=1.0.1",
+    "beautifulsoup4>=4.12.0",
+    "playwright>=1.56.0",
+    "sentence-transformers>=3.0,<4.0",
 ]
 
 [dependency-groups]

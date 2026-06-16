@@ -1,11 +1,14 @@
+import asyncio
 import inspect
 import json
 import logging
 import warnings
 from collections.abc import AsyncGenerator
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
+from datetime import datetime, timedelta
 from typing import Annotated, Any
 from uuid import UUID, uuid4
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, status
 from fastapi.responses import StreamingResponse
@@ -24,16 +27,23 @@ from langsmith import uuid7
 
 from agents import DEFAULT_AGENT, AgentGraph, get_agent, get_all_agent_info, load_agent
 from core import settings
+from ingestion import ArticleImporter, QbitaiHotNewsImporter, XhsImporter, open_xhs_login_window
 from memory import initialize_database, initialize_store
 from schema import (
+    ArticleIngestInput,
+    ArticleIngestResponse,
     ChatHistory,
     ChatHistoryInput,
     ChatMessage,
     Feedback,
     FeedbackResponse,
+    QbitaiHotNewsImportResponse,
     ServiceMetadata,
     StreamInput,
     UserInput,
+    XhsIngestInput,
+    XhsIngestResponse,
+    XhsLoginResponse,
 )
 from service.utils import (
     convert_message_content_to_string,
@@ -43,6 +53,43 @@ from service.utils import (
 
 warnings.filterwarnings("ignore", category=LangChainBetaWarning)
 logger = logging.getLogger(__name__)
+
+
+def _seconds_until_qbitai_hot_news_run() -> float:
+    timezone = ZoneInfo(settings.QBITAI_HOT_NEWS_TIMEZONE)
+    now = datetime.now(timezone)
+    next_run = now.replace(
+        hour=settings.QBITAI_HOT_NEWS_DAILY_HOUR,
+        minute=settings.QBITAI_HOT_NEWS_DAILY_MINUTE,
+        second=0,
+        microsecond=0,
+    )
+    if next_run <= now:
+        next_run += timedelta(days=1)
+    return max((next_run - now).total_seconds(), 0.0)
+
+
+async def qbitai_hot_news_scheduler() -> None:
+    while True:
+        sleep_seconds = _seconds_until_qbitai_hot_news_run()
+        logger.info("Next QbitAI hot news import in %.0f seconds", sleep_seconds)
+        await asyncio.sleep(sleep_seconds)
+        try:
+            result = await qbitai_hot_news_importer.import_hot_news(
+                limit=settings.QBITAI_HOT_NEWS_LIMIT,
+                force_refresh=True,
+                source_url=settings.QBITAI_HOT_NEWS_URL,
+            )
+            logger.info(
+                "QbitAI hot news import finished: %s (%s/%s)",
+                result.status,
+                result.imported_count,
+                result.item_count,
+            )
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("QbitAI hot news scheduled import failed")
 
 
 def custom_generate_unique_id(route: APIRoute) -> str:
@@ -69,6 +116,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     Configurable lifespan that initializes the appropriate database checkpointer, store,
     and agents with async loading - for example for starting up MCP clients.
     """
+    qbitai_scheduler_task: asyncio.Task[None] | None = None
     try:
         # Initialize both checkpointer (for short-term memory) and store (for long-term memory)
         async with initialize_database() as saver, initialize_store() as store:
@@ -94,7 +142,16 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
                 agent.checkpointer = saver
                 # Set store for long-term memory (cross-conversation knowledge)
                 agent.store = store
-            yield
+            if settings.QBITAI_HOT_NEWS_ENABLED:
+                qbitai_scheduler_task = asyncio.create_task(qbitai_hot_news_scheduler())
+                logger.info("QbitAI hot news scheduler started")
+            try:
+                yield
+            finally:
+                if qbitai_scheduler_task:
+                    qbitai_scheduler_task.cancel()
+                    with suppress(asyncio.CancelledError):
+                        await qbitai_scheduler_task
     except Exception as e:
         logger.error(f"Error during database/store/agents initialization: {e}")
         raise
@@ -102,6 +159,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
 app = FastAPI(lifespan=lifespan, generate_unique_id_function=custom_generate_unique_id)
 router = APIRouter(dependencies=[Depends(verify_bearer)])
+xhs_importer = XhsImporter()
+article_importer = ArticleImporter()
+qbitai_hot_news_importer = QbitaiHotNewsImporter()
 
 
 @router.get("/info")
@@ -389,6 +449,41 @@ async def feedback(feedback: Feedback) -> FeedbackResponse:
         **kwargs,
     )
     return FeedbackResponse()
+
+
+@router.post("/ingest/xhs", response_model=XhsIngestResponse)
+async def ingest_xhs(input: XhsIngestInput) -> XhsIngestResponse:
+    """Import a Xiaohongshu note into the PostgreSQL + Chroma RAG knowledge base."""
+
+    return await xhs_importer.import_url(input.url, force_refresh=input.force_refresh)
+
+
+@router.post("/ingest/article", response_model=ArticleIngestResponse)
+async def ingest_article(input: ArticleIngestInput) -> ArticleIngestResponse:
+    """Import a public graphic/text article into the PostgreSQL + Chroma RAG knowledge base."""
+
+    return await article_importer.import_url(input.url, force_refresh=input.force_refresh)
+
+
+@router.post("/ingest/qbitai/hot-news", response_model=QbitaiHotNewsImportResponse)
+async def ingest_qbitai_hot_news() -> QbitaiHotNewsImportResponse:
+    """Import the top QbitAI hot news articles into the RAG knowledge base."""
+
+    return await qbitai_hot_news_importer.import_hot_news(
+        limit=settings.QBITAI_HOT_NEWS_LIMIT,
+        force_refresh=True,
+        source_url=settings.QBITAI_HOT_NEWS_URL,
+    )
+
+
+@router.post("/ingest/xhs/login", response_model=XhsLoginResponse)
+async def login_xhs() -> XhsLoginResponse:
+    """Open a local browser window so the user can complete Xiaohongshu login."""
+
+    asyncio.create_task(open_xhs_login_window())
+    return XhsLoginResponse(
+        message="Xiaohongshu login window is opening. Complete login, then retry import."
+    )
 
 
 @router.post("/history")

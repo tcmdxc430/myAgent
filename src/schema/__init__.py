@@ -1,18 +1,27 @@
 from schema.models import AllModelEnum
 from schema.schema import (
     AgentInfo,
+    ArticleIngestInput,
+    ArticleIngestResponse,
     ChatHistory,
     ChatHistoryInput,
     ChatMessage,
     Feedback,
     FeedbackResponse,
+    QbitaiHotNewsImportItem,
+    QbitaiHotNewsImportResponse,
     ServiceMetadata,
     StreamInput,
     UserInput,
+    XhsIngestInput,
+    XhsIngestResponse,
+    XhsLoginResponse,
 )
 
 __all__ = [
     "AgentInfo",
+    "ArticleIngestInput",
+    "ArticleIngestResponse",
     "AllModelEnum",
     "UserInput",
     "ChatMessage",
@@ -20,6 +29,11 @@ __all__ = [
     "StreamInput",
     "Feedback",
     "FeedbackResponse",
+    "QbitaiHotNewsImportItem",
+    "QbitaiHotNewsImportResponse",
     "ChatHistoryInput",
     "ChatHistory",
+    "XhsIngestInput",
+    "XhsIngestResponse",
+    "XhsLoginResponse",
 ]

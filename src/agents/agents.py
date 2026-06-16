@@ -5,7 +5,9 @@ from langgraph.pregel import Pregel
 
 from agents.bg_task_agent.bg_task_agent import bg_task_agent
 from agents.chatbot import chatbot
+from agents.chinese_assistant import chinese_assistant
 from agents.command_agent import command_agent
+from agents.data_analyst_agent import data_analyst_agent
 from agents.github_mcp_agent.github_mcp_agent import github_mcp_agent
 from agents.interrupt_agent import interrupt_agent
 from agents.knowledge_base_agent import kb_agent
@@ -13,12 +15,11 @@ from agents.langgraph_supervisor_agent import langgraph_supervisor_agent
 from agents.langgraph_supervisor_hierarchy_agent import langgraph_supervisor_hierarchy_agent
 from agents.lazy_agent import LazyLoadingAgent
 from agents.rag_assistant import rag_assistant
-from agents.sql_assistant import sql_assistant
-from agents.research_assistant import research_assistant
-from agents.chinese_assistant import chinese_assistant
-from agents.structured_output_agent import structured_output_agent
 from agents.reflective_agent import reflective_agent
-from agents.data_analyst_agent import data_analyst_agent
+from agents.research_assistant import research_assistant
+from agents.sql_assistant import sql_assistant
+from agents.structured_output_agent import structured_output_agent
+from agents.technical_report_agent import technical_report_agent
 from schema import AgentInfo
 
 DEFAULT_AGENT = "research-assistant"
@@ -84,6 +85,10 @@ agents: dict[str, Agent] = {
     "data-analyst-assistant": Agent(
         description="一个随身数据分析科学家，支持上传 CSV 文件进行自动清洗、Python 数据分析和图表绘制。",
         graph_like=data_analyst_agent,
+    ),
+    "technical-report-agent": Agent(
+        description="一个基于已导入网页 URL 或文档知识库撰写政策合规型技术报告的智能体。",
+        graph_like=technical_report_agent,
     ),
 }
 

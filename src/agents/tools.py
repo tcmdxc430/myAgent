@@ -1,15 +1,20 @@
+import io
 import math
+import os
 import re
 import sqlite3
-from typing import Any
+import sys
+import traceback
 
 import numexpr
 import psycopg
 from langchain_chroma import Chroma
+from langchain_core.documents import Document
 from langchain_core.tools import BaseTool, tool
 from langchain_huggingface import HuggingFaceEmbeddings
 
 from core import settings
+from memory.postgres import get_postgres_connection_string
 
 
 def calculator_func(expression: str) -> str:
@@ -50,13 +55,47 @@ calculator.name = "Calculator"
 # Format retrieved documents with source metadata
 def format_contexts(docs):
     context_items = []
+    article_ids = [doc.metadata.get("article_id") for doc in docs if doc.metadata.get("article_id")]
+    articles = _load_rag_articles(article_ids)
     for i, doc in enumerate(docs):
         source = doc.metadata.get("source", "Unknown Source")
+        source_url = doc.metadata.get("source_url")
+        title = doc.metadata.get("title")
+        article_id = doc.metadata.get("article_id")
+        if article_id in articles:
+            article = articles[article_id]
+            title = article.get("title") or title
+            source_url = article.get("canonical_url") or source_url
         # Extract just the filename if it's a full path
         source_name = source.split("\\")[-1].split("/")[-1]
-        item = f"--- Source {i+1}: {source_name} ---\n{doc.page_content}"
+        header = f"--- Source {i+1}: {title or source_name} ---"
+        if source_url:
+            header += f"\nURL: {source_url}"
+        item = f"{header}\n{doc.page_content}"
         context_items.append(item)
     return "\n\n".join(context_items)
+
+
+def _load_rag_articles(article_ids: list[str]) -> dict[str, dict[str, str]]:
+    if not article_ids or settings.DATABASE_TYPE != "postgres":
+        return {}
+    try:
+        with psycopg.connect(get_postgres_connection_string()) as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT article_id, title, canonical_url
+                    FROM rag_articles
+                    WHERE article_id = ANY(%s)
+                    """,
+                    (list(set(article_ids)),),
+                )
+                return {
+                    row[0]: {"title": row[1], "canonical_url": row[2]}
+                    for row in cur.fetchall()
+                }
+    except Exception:
+        return {}
 
 
 def load_chroma_db():
@@ -70,22 +109,116 @@ def load_chroma_db():
 
     # Load the stored vector database
     chroma_db = Chroma(persist_directory="./chroma_db", embedding_function=embeddings)
-    retriever = chroma_db.as_retriever(search_kwargs={"k": 5})
+    retriever = chroma_db.as_retriever(search_kwargs={"k": 8})
     return retriever
 
 
 def database_search_func(query: str) -> str:
-    """Searches chroma_db for information in the company's handbook."""
+    """Searches the imported article knowledge base for relevant information."""
     # Get the chroma retriever
     retriever = load_chroma_db()
 
     # Search the database for relevant documents
-    documents = retriever.invoke(query)
+    keyword_documents = _load_keyword_rag_documents(query)
+    vector_documents = retriever.invoke(query)
+    documents = _merge_retrieved_documents(keyword_documents + vector_documents)
 
     # Format the documents into a string
     context_str = format_contexts(documents)
 
     return context_str
+
+
+def _load_keyword_rag_documents(query: str, limit: int = 5) -> list[Document]:
+    if settings.DATABASE_TYPE != "postgres":
+        return []
+    terms = _query_terms(query)
+    if not terms:
+        return []
+
+    conditions = []
+    params: list[str | int] = []
+    for term in terms:
+        like = f"%{term}%"
+        conditions.extend(
+            [
+                "a.title ILIKE %s",
+                "a.combined_text ILIKE %s",
+                "c.chunk_text ILIKE %s",
+            ]
+        )
+        params.extend([like, like, like])
+    params.append(limit)
+
+    try:
+        with psycopg.connect(get_postgres_connection_string()) as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    f"""
+                    SELECT
+                        c.chunk_text,
+                        c.chunk_id,
+                        c.chunk_index,
+                        a.article_id,
+                        a.title,
+                        a.canonical_url,
+                        a.source_platform,
+                        a.note_key
+                    FROM rag_chunks c
+                    JOIN rag_articles a ON a.article_id = c.article_id
+                    WHERE {" OR ".join(conditions)}
+                    ORDER BY a.updated_at DESC, c.chunk_index ASC
+                    LIMIT %s
+                    """,
+                    params,
+                )
+                return [
+                    Document(
+                        page_content=row[0],
+                        metadata={
+                            "chunk_id": row[1],
+                            "chunk_index": row[2],
+                            "article_id": row[3],
+                            "title": row[4],
+                            "source": row[5],
+                            "source_url": row[5],
+                            "source_platform": row[6],
+                            "note_key": row[7],
+                        },
+                    )
+                    for row in cur.fetchall()
+                ]
+    except Exception:
+        return []
+
+
+def _query_terms(query: str) -> list[str]:
+    terms = []
+    stripped = query.strip()
+    if len(stripped) >= 2:
+        terms.append(stripped)
+    terms.extend(re.findall(r"[A-Za-z0-9_#\-\u4e00-\u9fff]{2,}", query))
+    deduped = []
+    seen = set()
+    for term in terms:
+        term = term.strip()
+        if len(term) < 2 or term in seen:
+            continue
+        seen.add(term)
+        deduped.append(term[:80])
+    return deduped[:8]
+
+
+def _merge_retrieved_documents(documents: list[Document]) -> list[Document]:
+    merged = []
+    seen = set()
+    for doc in documents:
+        key = doc.metadata.get("chunk_id") or doc.metadata.get("source_url") or doc.page_content[:120]
+        if key in seen:
+            continue
+        seen.add(key)
+        merged.append(doc)
+    return merged[:8]
 
 
 database_search: BaseTool = tool(database_search_func)
@@ -208,12 +341,6 @@ def execute_sql(sql_query: str) -> str:
     except Exception as e:
         return f"Error executing SQL: {e}"
 
-import sys
-import io
-import traceback
-import os
-from langchain_core.tools import tool
-
 # 创建一个专门存放生成图表的目录
 # 这个目录会被 Streamlit 访问，用来向用户展示生成的图表
 CHARTS_DIR = "charts"
@@ -269,7 +396,7 @@ def execute_python_code(code: str) -> str:
             
         return "\n".join(output)
         
-    except Exception as e:
+    except Exception:
         # 捕获运行代码时的任何异常，并格式化成易读的报错信息返回给 Agent，方便它自我纠错
         return f"【代码执行失败，报错堆栈如下】:\n{traceback.format_exc()}"
         

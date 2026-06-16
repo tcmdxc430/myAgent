@@ -6,6 +6,8 @@ from typing import Any
 import httpx
 
 from schema import (
+    ArticleIngestInput,
+    ArticleIngestResponse,
     ChatHistory,
     ChatHistoryInput,
     ChatMessage,
@@ -13,6 +15,9 @@ from schema import (
     ServiceMetadata,
     StreamInput,
     UserInput,
+    XhsIngestInput,
+    XhsIngestResponse,
+    XhsLoginResponse,
 )
 
 
@@ -360,3 +365,48 @@ class AgentClient:
             raise AgentClientError(f"Error: {e}")
 
         return ChatHistory.model_validate(response.json())
+
+    async def aingest_xhs(self, url: str, force_refresh: bool = False) -> XhsIngestResponse:
+        request = XhsIngestInput(url=url, force_refresh=force_refresh)
+        async with httpx.AsyncClient() as client:
+            try:
+                response = await client.post(
+                    f"{self.base_url}/ingest/xhs",
+                    json=request.model_dump(),
+                    headers=self._headers,
+                    timeout=self.timeout or 180,
+                )
+                response.raise_for_status()
+            except httpx.HTTPError as e:
+                raise AgentClientError(f"Error importing Xiaohongshu note: {e}")
+        return XhsIngestResponse.model_validate(response.json())
+
+    async def aingest_article(
+        self, url: str, force_refresh: bool = False
+    ) -> ArticleIngestResponse:
+        request = ArticleIngestInput(url=url, force_refresh=force_refresh)
+        async with httpx.AsyncClient() as client:
+            try:
+                response = await client.post(
+                    f"{self.base_url}/ingest/article",
+                    json=request.model_dump(),
+                    headers=self._headers,
+                    timeout=self.timeout or 180,
+                )
+                response.raise_for_status()
+            except httpx.HTTPError as e:
+                raise AgentClientError(f"Error importing article: {e}")
+        return ArticleIngestResponse.model_validate(response.json())
+
+    async def aopen_xhs_login(self) -> XhsLoginResponse:
+        async with httpx.AsyncClient() as client:
+            try:
+                response = await client.post(
+                    f"{self.base_url}/ingest/xhs/login",
+                    headers=self._headers,
+                    timeout=self.timeout or 30,
+                )
+                response.raise_for_status()
+            except httpx.HTTPError as e:
+                raise AgentClientError(f"Error opening Xiaohongshu login: {e}")
+        return XhsLoginResponse.model_validate(response.json())

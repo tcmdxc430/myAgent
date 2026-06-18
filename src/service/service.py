@@ -10,7 +10,7 @@ from typing import Annotated, Any
 from uuid import UUID, uuid4
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, Depends, FastAPI, HTTPException, status
+from fastapi import APIRouter, Depends, FastAPI, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
 from fastapi.routing import APIRoute
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -27,7 +27,14 @@ from langsmith import uuid7
 
 from agents import DEFAULT_AGENT, AgentGraph, get_agent, get_all_agent_info, load_agent
 from core import settings
-from ingestion import ArticleImporter, QbitaiHotNewsImporter, XhsImporter, open_xhs_login_window
+from ingestion import (
+    ArticleImporter,
+    QbitaiHotNewsImporter,
+    XhsImporter,
+    get_ingested_article,
+    list_ingested_articles,
+    open_xhs_login_window,
+)
 from memory import initialize_database, initialize_store
 from schema import (
     ArticleIngestInput,
@@ -38,6 +45,8 @@ from schema import (
     Feedback,
     FeedbackResponse,
     QbitaiHotNewsImportResponse,
+    IngestedArticleDetail,
+    IngestedArticleListResponse,
     ServiceMetadata,
     StreamInput,
     UserInput,
@@ -463,6 +472,46 @@ async def ingest_article(input: ArticleIngestInput) -> ArticleIngestResponse:
     """Import a public graphic/text article into the PostgreSQL + Chroma RAG knowledge base."""
 
     return await article_importer.import_url(input.url, force_refresh=input.force_refresh)
+
+
+@router.get("/ingest/articles", response_model=IngestedArticleListResponse)
+async def get_ingested_articles(
+    q: str | None = None,
+    platform: str | None = None,
+    status: str | None = None,
+    date_from: Annotated[str | None, Query(alias="dateFrom")] = None,
+    date_to: Annotated[str | None, Query(alias="dateTo")] = None,
+    has_ocr_failed: Annotated[bool | None, Query(alias="hasOcrFailed")] = None,
+    sort: str = "newest",
+    page: int = 1,
+    page_size: Annotated[int, Query(alias="pageSize")] = 20,
+    search_mode: Annotated[str, Query(alias="searchMode")] = "keyword",
+) -> IngestedArticleListResponse:
+    """List imported RAG articles for internal product surfaces."""
+
+    return await asyncio.to_thread(
+        list_ingested_articles,
+        q=q.strip() if q else None,
+        platform=platform or None,
+        status=status or None,
+        date_from=date_from or None,
+        date_to=date_to or None,
+        has_ocr_failed=has_ocr_failed,
+        sort=sort,
+        page=page,
+        page_size=page_size,
+        search_mode=search_mode,
+    )
+
+
+@router.get("/ingest/articles/{article_id}", response_model=IngestedArticleDetail)
+async def get_ingested_article_detail(article_id: str) -> IngestedArticleDetail:
+    """Return full imported article text, assets, and chunk summaries."""
+
+    article = await asyncio.to_thread(get_ingested_article, article_id)
+    if article is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Imported article not found")
+    return article
 
 
 @router.post("/ingest/qbitai/hot-news", response_model=QbitaiHotNewsImportResponse)

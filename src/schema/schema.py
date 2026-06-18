@@ -214,6 +214,59 @@ class XhsIngestResponse(BaseModel):
 ArticleIngestResponse = XhsIngestResponse
 
 
+class IngestedArticleAsset(BaseModel):
+    asset_id: str
+    image_url: str
+    local_path: str | None = None
+    ocr_text: str | None = None
+    ocr_status: str
+    ocr_error: str | None = None
+    created_at: str | None = None
+
+
+class IngestedArticleChunk(BaseModel):
+    chunk_id: str
+    chunk_index: int
+    chroma_document_id: str | None = None
+    chunk_text: str
+    created_at: str | None = None
+
+
+class IngestedArticleListItem(BaseModel):
+    article_id: str
+    source_platform: str
+    source_url: str
+    canonical_url: str
+    title: str | None = None
+    author: str | None = None
+    published_at: str | None = None
+    tags: list[str] = Field(default_factory=list)
+    status: str
+    fetched_at: str | None = None
+    created_at: str | None = None
+    updated_at: str | None = None
+    chunk_count: int = 0
+    asset_count: int = 0
+    ocr_failed_count: int = 0
+    snippet: str = ""
+
+
+class IngestedArticleListResponse(BaseModel):
+    items: list[IngestedArticleListItem]
+    total: int
+    page: int
+    page_size: int
+    total_pages: int
+
+
+class IngestedArticleDetail(IngestedArticleListItem):
+    body_text: str | None = None
+    ocr_text: str | None = None
+    combined_text: str
+    assets: list[IngestedArticleAsset] = Field(default_factory=list)
+    chunks: list[IngestedArticleChunk] = Field(default_factory=list)
+
+
 class QbitaiHotNewsImportItem(BaseModel):
     """Result for one QbitAI hot news article import."""
 

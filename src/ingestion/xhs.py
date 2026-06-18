@@ -18,6 +18,7 @@ from urllib.parse import urlparse, urlunparse
 
 import httpx
 import psycopg
+from psycopg.rows import dict_row
 from bs4 import BeautifulSoup
 from langchain_chroma import Chroma
 from langchain_core.documents import Document
@@ -27,20 +28,31 @@ from PIL import Image
 
 from core import settings
 from memory.postgres import get_postgres_connection_string
-from schema import XhsIngestResponse
+from schema import (
+    IngestedArticleAsset,
+    IngestedArticleChunk,
+    IngestedArticleDetail,
+    IngestedArticleListItem,
+    IngestedArticleListResponse,
+    XhsIngestResponse,
+)
 
 logger = logging.getLogger(__name__)
 
-XHS_LOCAL_DIR = Path(os.getenv("LOCALAPPDATA", ".local")) / "myAgent"
-XHS_PROFILE_DIR = XHS_LOCAL_DIR / "xhs-playwright-profile"
-XHS_ASSET_DIR = XHS_LOCAL_DIR / "xhs-assets"
+XHS_LOCAL_DIR = Path(os.getenv("MYAGENT_DATA_DIR") or os.getenv("LOCALAPPDATA", ".local")) / "myAgent"
+XHS_PROFILE_DIR = Path(os.getenv("XHS_PROFILE_DIR", str(XHS_LOCAL_DIR / "xhs-playwright-profile")))
+XHS_ASSET_DIR = Path(os.getenv("XHS_ASSET_DIR", str(XHS_LOCAL_DIR / "xhs-assets")))
 XHS_PLATFORM = "xiaohongshu"
-CHROMA_DIR = "./chroma_db"
+CHROMA_DIR = os.getenv("CHROMA_DIR", "./chroma_db")
 BAIDU_TOKEN_URL = "https://aip.baidubce.com/oauth/2.0/token"
 BAIDU_OCR_URL = "https://aip.baidubce.com/rest/2.0/ocr/v1/general_basic"
 MAX_XHS_SCREENSHOT_ASSETS = 6
 MAX_BAIDU_IMAGE_BYTES = 3_500_000
 CHROME_PATHS = [
+    Path("/usr/bin/chromium"),
+    Path("/usr/bin/chromium-browser"),
+    Path("/usr/bin/google-chrome"),
+    Path("/usr/bin/google-chrome-stable"),
     Path(r"C:\Program Files\Google\Chrome\Application\chrome.exe"),
     Path(r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe"),
     Path(r"C:\Program Files\Microsoft\Edge\Application\msedge.exe"),
@@ -225,6 +237,8 @@ def extract_article_from_html(
 async def open_xhs_login_window() -> None:
     XHS_PROFILE_DIR.mkdir(parents=True, exist_ok=True)
     browser_path = _find_system_browser()
+    if browser_path is None:
+        raise XhsIngestError("No system browser executable was found for opening a login window.")
     launcher = XHS_LOCAL_DIR / "open-xhs-login.cmd"
     launcher.write_text(
         "\r\n".join(
@@ -301,12 +315,16 @@ class XhsImporter:
         try:
             with sync_playwright() as playwright:
                 browser_path = _find_system_browser()
+                launch_options: dict[str, Any] = {
+                    "headless": True,
+                    "viewport": {"width": 1440, "height": 1000},
+                    "args": ["--disable-blink-features=AutomationControlled"],
+                }
+                if browser_path is not None:
+                    launch_options["executable_path"] = str(browser_path)
                 context = playwright.chromium.launch_persistent_context(
                     str(XHS_PROFILE_DIR),
-                    executable_path=str(browser_path),
-                    headless=True,
-                    viewport={"width": 1440, "height": 1000},
-                    args=["--disable-blink-features=AutomationControlled"],
+                    **launch_options,
                 )
                 page = context.pages[0] if context.pages else context.new_page()
                 screenshot_assets: list[XhsAsset] = []
@@ -921,12 +939,16 @@ class ArticleImporter(XhsImporter):
         try:
             with sync_playwright() as playwright:
                 browser_path = _find_system_browser()
+                launch_options: dict[str, Any] = {
+                    "headless": True,
+                    "viewport": {"width": 1440, "height": 1000},
+                    "args": ["--disable-blink-features=AutomationControlled"],
+                }
+                if browser_path is not None:
+                    launch_options["executable_path"] = str(browser_path)
                 context = playwright.chromium.launch_persistent_context(
                     str(XHS_PROFILE_DIR),
-                    executable_path=str(browser_path),
-                    headless=True,
-                    viewport={"width": 1440, "height": 1000},
-                    args=["--disable-blink-features=AutomationControlled"],
+                    **launch_options,
                 )
                 page = context.pages[0] if context.pages else context.new_page()
                 screenshot_assets: list[XhsAsset] = []
@@ -955,6 +977,273 @@ class ArticleImporter(XhsImporter):
         )
         article.assets = _merge_assets(screenshot_assets + article.assets)
         return article
+
+
+def list_ingested_articles(
+    *,
+    q: str | None = None,
+    platform: str | None = None,
+    status: str | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
+    has_ocr_failed: bool | None = None,
+    sort: str = "newest",
+    page: int = 1,
+    page_size: int = 20,
+    search_mode: str = "keyword",
+) -> IngestedArticleListResponse:
+    XhsImporter()._ensure_tables()
+    page = max(page, 1)
+    page_size = min(max(page_size, 1), 100)
+    where, params = _article_where_params(
+        q=q,
+        platform=platform,
+        status=status,
+        date_from=date_from,
+        date_to=date_to,
+        has_ocr_failed=has_ocr_failed,
+        search_mode=search_mode,
+    )
+    where_sql = f"WHERE {' AND '.join(where)}" if where else ""
+    order_sql = _article_order_sql(sort)
+    offset = (page - 1) * page_size
+
+    with psycopg.connect(get_postgres_connection_string(), row_factory=dict_row) as conn:
+        with conn.cursor() as cur:
+            cur.execute(f"SELECT COUNT(*) AS total FROM rag_articles a {where_sql}", params)
+            total = int(cur.fetchone()["total"])
+            cur.execute(
+                f"""
+                SELECT
+                    a.article_id,
+                    a.source_platform,
+                    a.source_url,
+                    a.canonical_url,
+                    a.title,
+                    a.author,
+                    a.published_at,
+                    a.tags,
+                    a.status,
+                    a.fetched_at,
+                    a.created_at,
+                    a.updated_at,
+                    LEFT(COALESCE(NULLIF(a.body_text, ''), NULLIF(a.ocr_text, ''), a.combined_text, ''), 240) AS snippet,
+                    COALESCE(chunk_stats.chunk_count, 0) AS chunk_count,
+                    COALESCE(asset_stats.asset_count, 0) AS asset_count,
+                    COALESCE(asset_stats.ocr_failed_count, 0) AS ocr_failed_count
+                FROM rag_articles a
+                LEFT JOIN (
+                    SELECT article_id, COUNT(*)::int AS chunk_count
+                    FROM rag_chunks
+                    GROUP BY article_id
+                ) chunk_stats ON chunk_stats.article_id = a.article_id
+                LEFT JOIN (
+                    SELECT
+                        article_id,
+                        COUNT(*)::int AS asset_count,
+                        COUNT(*) FILTER (WHERE ocr_status = 'failed')::int AS ocr_failed_count
+                    FROM rag_article_assets
+                    GROUP BY article_id
+                ) asset_stats ON asset_stats.article_id = a.article_id
+                {where_sql}
+                {order_sql}
+                LIMIT %s OFFSET %s
+                """,
+                [*params, page_size, offset],
+            )
+            rows = cur.fetchall()
+
+    total_pages = (total + page_size - 1) // page_size if total else 0
+    return IngestedArticleListResponse(
+        items=[_article_list_item_from_row(row) for row in rows],
+        total=total,
+        page=page,
+        page_size=page_size,
+        total_pages=total_pages,
+    )
+
+
+def get_ingested_article(article_id: str) -> IngestedArticleDetail | None:
+    XhsImporter()._ensure_tables()
+    with psycopg.connect(get_postgres_connection_string(), row_factory=dict_row) as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT
+                    a.article_id,
+                    a.source_platform,
+                    a.source_url,
+                    a.canonical_url,
+                    a.title,
+                    a.author,
+                    a.published_at,
+                    a.body_text,
+                    a.ocr_text,
+                    a.combined_text,
+                    a.tags,
+                    a.status,
+                    a.fetched_at,
+                    a.created_at,
+                    a.updated_at,
+                    LEFT(COALESCE(NULLIF(a.body_text, ''), NULLIF(a.ocr_text, ''), a.combined_text, ''), 240) AS snippet,
+                    COALESCE(chunk_stats.chunk_count, 0) AS chunk_count,
+                    COALESCE(asset_stats.asset_count, 0) AS asset_count,
+                    COALESCE(asset_stats.ocr_failed_count, 0) AS ocr_failed_count
+                FROM rag_articles a
+                LEFT JOIN (
+                    SELECT article_id, COUNT(*)::int AS chunk_count
+                    FROM rag_chunks
+                    GROUP BY article_id
+                ) chunk_stats ON chunk_stats.article_id = a.article_id
+                LEFT JOIN (
+                    SELECT
+                        article_id,
+                        COUNT(*)::int AS asset_count,
+                        COUNT(*) FILTER (WHERE ocr_status = 'failed')::int AS ocr_failed_count
+                    FROM rag_article_assets
+                    GROUP BY article_id
+                ) asset_stats ON asset_stats.article_id = a.article_id
+                WHERE a.article_id = %s
+                """,
+                (article_id,),
+            )
+            article = cur.fetchone()
+            if not article:
+                return None
+
+            cur.execute(
+                """
+                SELECT asset_id, image_url, local_path, ocr_text, ocr_status, ocr_error, created_at
+                FROM rag_article_assets
+                WHERE article_id = %s
+                ORDER BY created_at ASC, asset_id ASC
+                """,
+                (article_id,),
+            )
+            assets = [IngestedArticleAsset(**_serialize_row(row)) for row in cur.fetchall()]
+
+            cur.execute(
+                """
+                SELECT chunk_id, chunk_index, chroma_document_id, chunk_text, created_at
+                FROM rag_chunks
+                WHERE article_id = %s
+                ORDER BY chunk_index ASC
+                """,
+                (article_id,),
+            )
+            chunks = [IngestedArticleChunk(**_serialize_row(row)) for row in cur.fetchall()]
+
+    base = _article_list_item_from_row(article).model_dump()
+    return IngestedArticleDetail(
+        **base,
+        body_text=article.get("body_text"),
+        ocr_text=article.get("ocr_text"),
+        combined_text=article.get("combined_text") or "",
+        assets=assets,
+        chunks=chunks,
+    )
+
+
+def _article_where_params(
+    *,
+    q: str | None,
+    platform: str | None,
+    status: str | None,
+    date_from: str | None,
+    date_to: str | None,
+    has_ocr_failed: bool | None,
+    search_mode: str,
+) -> tuple[list[str], list[Any]]:
+    where: list[str] = []
+    params: list[Any] = []
+    if q:
+        keyword = f"%{q.strip()}%"
+        # search_mode is accepted for API compatibility; v1 uses keyword search for list retrieval.
+        where.append(
+            """
+            (
+                a.title ILIKE %s
+                OR a.body_text ILIKE %s
+                OR a.source_platform ILIKE %s
+                OR a.source_url ILIKE %s
+                OR a.canonical_url ILIKE %s
+            )
+            """
+        )
+        params.extend([keyword] * 5)
+    if platform:
+        where.append("a.source_platform = %s")
+        params.append(platform)
+    if status:
+        where.append("a.status = %s")
+        params.append(status)
+    if date_from:
+        where.append("a.fetched_at::date >= %s::date")
+        params.append(date_from)
+    if date_to:
+        where.append("a.fetched_at::date <= %s::date")
+        params.append(date_to)
+    if has_ocr_failed is True:
+        where.append(
+            """
+            EXISTS (
+                SELECT 1 FROM rag_article_assets aa
+                WHERE aa.article_id = a.article_id AND aa.ocr_status = 'failed'
+            )
+            """
+        )
+    elif has_ocr_failed is False:
+        where.append(
+            """
+            NOT EXISTS (
+                SELECT 1 FROM rag_article_assets aa
+                WHERE aa.article_id = a.article_id AND aa.ocr_status = 'failed'
+            )
+            """
+        )
+    return where, params
+
+
+def _article_order_sql(sort: str) -> str:
+    match sort:
+        case "oldest":
+            return "ORDER BY a.fetched_at ASC, a.created_at ASC"
+        case "title":
+            return "ORDER BY a.title ASC NULLS LAST, a.fetched_at DESC"
+        case "platform":
+            return "ORDER BY a.source_platform ASC, a.fetched_at DESC"
+        case _:
+            return "ORDER BY a.fetched_at DESC, a.created_at DESC"
+
+
+def _article_list_item_from_row(row: dict[str, Any]) -> IngestedArticleListItem:
+    data = _serialize_row(row)
+    data["tags"] = _normalize_tags(data.get("tags"))
+    data["snippet"] = _clean_text(data.get("snippet") or "")
+    return IngestedArticleListItem(**data)
+
+
+def _normalize_tags(value: Any) -> list[str]:
+    if isinstance(value, list):
+        return [str(item) for item in value if str(item).strip()]
+    if isinstance(value, str) and value.strip():
+        try:
+            parsed = json.loads(value)
+        except json.JSONDecodeError:
+            return [value]
+        if isinstance(parsed, list):
+            return [str(item) for item in parsed if str(item).strip()]
+    return []
+
+
+def _serialize_row(row: dict[str, Any]) -> dict[str, Any]:
+    serialized: dict[str, Any] = {}
+    for key, value in row.items():
+        if isinstance(value, datetime):
+            serialized[key] = value.isoformat()
+        else:
+            serialized[key] = value
+    return serialized
 
 
 def _first_meta(soup: BeautifulSoup, names: list[str]) -> str | None:
@@ -1091,11 +1380,17 @@ def _suffix_for_content_type(content_type: str | None) -> str:
             return ".jpg"
 
 
-def _find_system_browser() -> Path:
+def _find_system_browser() -> Path | None:
+    configured = os.getenv("XHS_BROWSER_PATH")
+    if configured:
+        path = Path(configured)
+        if path.exists():
+            return path
+        raise XhsIngestError(f"Configured XHS_BROWSER_PATH does not exist: {configured}")
     for path in CHROME_PATHS:
         if path.exists():
             return path
-    raise XhsIngestError("No Chrome or Edge executable was found on this machine.")
+    return None
 
 
 def _profile_is_locked_error(message: str) -> bool:

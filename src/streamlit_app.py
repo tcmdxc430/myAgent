@@ -24,7 +24,18 @@ from voice import VoiceManager
 
 
 APP_TITLE = "AI 智能体"
-APP_ICON = "🧰"
+APP_ICON = "✨"
+NEW_CHAT_ICON = ":material/add_comment:"
+SETTINGS_ICON = ":material/tune:"
+SHARE_ICON = ":material/ios_share:"
+INGEST_ICON = ":material/library_add:"
+DATA_UPLOAD_ICON = ":material/query_stats:"
+AI_AVATAR_ICON = ":material/account_circle:"
+USER_AVATAR_ICON = "media/avator.png"
+TASK_AVATAR_ICON = ":material/precision_manufacturing:"
+SUB_AGENT_ICON = ":material/hub:"
+TOOL_ICON = ":material/auto_fix_high:"
+FEEDBACK_ICON = ":material/rate_review:"
 USER_ID_COOKIE = "user_id"
 
 
@@ -122,7 +133,7 @@ async def main() -> None:
         "对话创造更多可能"
         ""
 
-        if st.button(":material/chat: 新对话", use_container_width=True):
+        if st.button(f"{NEW_CHAT_ICON} 新对话", use_container_width=True):
             st.session_state.messages = []
             st.session_state.thread_id = str(uuid.uuid4())
             # Clear saved audio when starting new chat
@@ -130,7 +141,7 @@ async def main() -> None:
                 del st.session_state.last_audio
             st.rerun()
 
-        with st.expander(":material/settings: 设置", expanded=False):
+        with st.expander(f"{SETTINGS_ICON} 设置", expanded=False):
             model_idx = agent_client.info.models.index(agent_client.info.default_model)
             model = st.selectbox("使用的模型", options=agent_client.info.models, index=model_idx)
             agent_list = [a.key for a in agent_client.info.agents]
@@ -174,10 +185,10 @@ async def main() -> None:
             st.markdown(f"**对话 URL:**\n```text\n{chat_url}\n```")
             st.info("复制上方 URL 以分享或重新访问此对话")
 
-        if st.button(":material/upload: 分享/恢复对话", use_container_width=True):
+        if st.button(f"{SHARE_ICON} 分享/恢复对话", use_container_width=True):
             share_chat_dialog()
 
-        with st.popover(":material/bookmark_add: 图文链接导入", use_container_width=True):
+        with st.popover(f"{INGEST_ICON} 图文链接导入", use_container_width=True):
             st.caption("导入小红书、网页文章等图文内容到 RAG 知识库")
             article_url = st.text_input("图文文章链接", key="article_ingest_url")
             force_refresh = st.checkbox("强制刷新已导入内容", value=False)
@@ -223,7 +234,7 @@ async def main() -> None:
         # 如果当前选择的是数据分析智能体，显示文件上传控件
         if agent_client.agent == "data-analyst-assistant":
             st.markdown("---")
-            st.subheader("📊 上传分析数据")
+            st.subheader(f"{DATA_UPLOAD_ICON} 上传分析数据")
             uploaded_file = st.file_uploader("上传 CSV 格式数据文件", type=["csv"])
             if uploaded_file is not None:
                 # 确保 data 目录存在
@@ -258,7 +269,7 @@ async def main() -> None:
             case _:
                 WELCOME = "你好！我是 AI 智能体。问我任何问题吧！"
 
-        with st.chat_message("ai", avatar="media/avator.png"):
+        with st.chat_message("ai", avatar=AI_AVATAR_ICON):
             st.write(WELCOME)
 
     # draw_messages() 期望一个消息的异步迭代器
@@ -292,7 +303,7 @@ async def main() -> None:
 
     if user_input:
         messages.append(ChatMessage(type="human", content=user_input))
-        st.chat_message("human", avatar="👤").write(user_input)
+        st.chat_message("human", avatar=USER_AVATAR_ICON).write(user_input)
         try:
             if use_streaming:
                 stream = agent_client.astream(
@@ -324,7 +335,7 @@ async def main() -> None:
                 )
                 messages.append(response)
                 # 渲染带有可选语音的 AI 响应
-                with st.chat_message("ai", avatar="media/avator.png"):
+                with st.chat_message("ai", avatar=AI_AVATAR_ICON):
                     if voice and enable_audio:
                         voice.render_message(response.content)
                     else:
@@ -375,7 +386,7 @@ async def draw_messages(
             if not streaming_placeholder:
                 if last_message_type != "ai":
                     last_message_type = "ai"
-                    st.session_state.last_message = st.chat_message("ai", avatar="media/avator.png")
+                    st.session_state.last_message = st.chat_message("ai", avatar=AI_AVATAR_ICON)
                 with st.session_state.last_message:
                     streaming_placeholder = st.empty()
 
@@ -391,7 +402,7 @@ async def draw_messages(
             # 来自用户的消息，最简单的情况
             case "human":
                 last_message_type = "human"
-                st.chat_message("human", avatar="👤").write(msg.content)
+                st.chat_message("human", avatar=USER_AVATAR_ICON).write(msg.content)
 
             # 来自智能体的消息是最复杂的情况，因为我们需要处理流式令牌和工具调用。
             case "ai":
@@ -402,7 +413,7 @@ async def draw_messages(
                 # 如果最后一条消息类型不是 AI，创建一个新的聊天消息
                 if last_message_type != "ai":
                     last_message_type = "ai"
-                    st.session_state.last_message = st.chat_message("ai", avatar="media/avator.png")
+                    st.session_state.last_message = st.chat_message("ai", avatar=AI_AVATAR_ICON)
 
                 with st.session_state.last_message:
                     # 如果消息有内容，将其写出。
@@ -421,9 +432,9 @@ async def draw_messages(
                         for tool_call in msg.tool_calls:
                             # 为传输与常规工具调用使用不同的标签
                             if "transfer_to" in tool_call["name"]:
-                                label = f"""💼 子智能体: {tool_call["name"]}"""
+                                label = f"""{SUB_AGENT_ICON} 子智能体: {tool_call["name"]}"""
                             else:
-                                label = f"""🛠️ 工具调用: {tool_call["name"]}"""
+                                label = f"""{TOOL_ICON} 工具调用: {tool_call["name"]}"""
 
                             status = st.status(
                                 label,
@@ -451,7 +462,9 @@ async def draw_messages(
                             # 如果返回了人类消息，现在绘制它
                             if returned_msg:
                                 last_message_type = "human"
-                                st.chat_message("human", avatar="👤").write(returned_msg.content)
+                                st.chat_message("human", avatar=USER_AVATAR_ICON).write(
+                                    returned_msg.content
+                                )
                                 if is_new:
                                     st.session_state.messages.append(returned_msg)
                             continue
@@ -495,7 +508,7 @@ async def draw_messages(
                 if last_message_type != "task":
                     last_message_type = "task"
                     st.session_state.last_message = st.chat_message(
-                        name="task", avatar=":material/manufacturing:"
+                        name="task", avatar=TASK_AVATAR_ICON
                     )
                     with st.session_state.last_message:
                         status = TaskDataStatus()
@@ -536,7 +549,7 @@ async def handle_feedback() -> None:
             st.error(f"记录反馈时出错: {e}")
             st.stop()
         st.session_state.last_feedback = (latest_run_id, feedback)
-        st.toast("反馈已记录", icon=":material/reviews:")
+        st.toast("反馈已记录", icon=FEEDBACK_ICON)
 
 
 async def handle_sub_agent_msgs(messages_agen, status, is_new):
@@ -619,7 +632,7 @@ async def handle_sub_agent_msgs(messages_agen, status, is_new):
                     if "transfer_to" in tc["name"]:
                         # Create a nested status container for the sub-agent
                         nested_status = status.status(
-                            f"""💼 子智能体: {tc["name"]}""",
+                            f"""{SUB_AGENT_ICON} 子智能体: {tc["name"]}""",
                             state="running" if is_new else "complete",
                             expanded=True,
                         )
@@ -628,7 +641,7 @@ async def handle_sub_agent_msgs(messages_agen, status, is_new):
                         await handle_sub_agent_msgs(messages_agen, nested_status, is_new)
                     else:
                         # Regular tool call - create popover
-                        popover = status.popover(f"{tc['name']}", icon="🛠️")
+                        popover = status.popover(f"{tc['name']}", icon=TOOL_ICON)
                         popover.write(f"**工具:** {tc['name']}")
                         popover.write("**输入:**")
                         popover.write(tc["args"])

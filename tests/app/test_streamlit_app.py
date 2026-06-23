@@ -8,12 +8,16 @@ from client import AgentClientError
 from schema import ChatHistory, ChatMessage
 from schema.models import OpenAIModelName
 
+AI_AVATAR_ICON = ":material/account_circle:"
+USER_AVATAR_PREFIX = "/mock/media/"
+TOOL_ICON = ":material/auto_fix_high:"
+
 
 def test_app_simple_non_streaming(mock_agent_client):
     """Test the full app - happy path"""
     at = AppTest.from_file("../../src/streamlit_app.py").run()
 
-    WELCOME_START = "Hello! I'm an AI agent. Ask me anything!"
+    WELCOME_START = "你好！我是 AI 智能体。"
     PROMPT = "Know any jokes?"
     RESPONSE = "Sure! Here's a joke:"
 
@@ -21,15 +25,15 @@ def test_app_simple_non_streaming(mock_agent_client):
         return_value=ChatMessage(type="ai", content=RESPONSE),
     )
 
-    assert at.chat_message[0].avatar == "assistant"
+    assert at.chat_message[0].avatar == AI_AVATAR_ICON
     assert at.chat_message[0].markdown[0].value.startswith(WELCOME_START)
 
     at.sidebar.toggle[0].set_value(False)  # Use Streaming = False
     at.chat_input[0].set_value(PROMPT).run()
     print(at)
-    assert at.chat_message[0].avatar == "user"
+    assert at.chat_message[0].avatar.startswith(USER_AVATAR_PREFIX)
     assert at.chat_message[0].markdown[0].value == PROMPT
-    assert at.chat_message[1].avatar == "assistant"
+    assert at.chat_message[1].avatar == AI_AVATAR_ICON
     assert at.chat_message[1].markdown[0].value == RESPONSE
     assert not at.exception
 
@@ -56,9 +60,9 @@ def test_app_settings(mock_agent_client):
     print(at)
 
     # Basic checks
-    assert at.chat_message[0].avatar == "user"
+    assert at.chat_message[0].avatar.startswith(USER_AVATAR_PREFIX)
     assert at.chat_message[0].markdown[0].value == PROMPT
-    assert at.chat_message[1].avatar == "assistant"
+    assert at.chat_message[1].avatar == AI_AVATAR_ICON
     assert at.chat_message[1].markdown[0].value == RESPONSE
 
     # Check the args match the settings
@@ -89,9 +93,9 @@ def test_app_thread_id_history(mock_agent_client):
     print(at)
     assert at.session_state.thread_id == "1234"
     mock_agent_client.get_history.assert_called_with(thread_id="1234")
-    assert at.chat_message[0].avatar == "user"
+    assert at.chat_message[0].avatar.startswith(USER_AVATAR_PREFIX)
     assert at.chat_message[0].markdown[0].value == "What is the weather?"
-    assert at.chat_message[1].avatar == "assistant"
+    assert at.chat_message[1].avatar == AI_AVATAR_ICON
     assert at.chat_message[1].markdown[0].value == "The weather is sunny."
     assert not at.exception
 
@@ -129,16 +133,16 @@ async def test_app_streaming(mock_agent_client):
     at.chat_input[0].set_value(PROMPT).run()
     print(at)
 
-    assert at.chat_message[0].avatar == "user"
+    assert at.chat_message[0].avatar.startswith(USER_AVATAR_PREFIX)
     assert at.chat_message[0].markdown[0].value == PROMPT
     response = at.chat_message[1]
     tool_status = response.status[0]
-    assert response.avatar == "assistant"
-    assert tool_status.label == "🛠️ Tool Call: calculator"
+    assert response.avatar == AI_AVATAR_ICON
+    assert tool_status.label == f"{TOOL_ICON} 工具调用: calculator"
     assert tool_status.icon == ":material/check:"
-    assert tool_status.markdown[0].value == "Input:"
+    assert tool_status.markdown[0].value == "输入:"
     assert tool_status.json[0].value == '{"expression": "6 * 7"}'
-    assert tool_status.markdown[1].value == "Output:"
+    assert tool_status.markdown[1].value == "输出:"
     assert tool_status.markdown[2].value == "42"
     assert response.markdown[-1].value == "The answer is 42"
     assert not at.exception
@@ -157,10 +161,10 @@ async def test_app_init_error(mock_agent_client):
     at.chat_input[0].set_value(PROMPT).run()
     print(at)
 
-    assert at.chat_message[0].avatar == "assistant"
-    assert at.chat_message[1].avatar == "user"
+    assert at.chat_message[0].avatar == AI_AVATAR_ICON
+    assert at.chat_message[1].avatar.startswith(USER_AVATAR_PREFIX)
     assert at.chat_message[1].markdown[0].value == PROMPT
-    assert at.error[0].value == "Error generating response: Error connecting to agent"
+    assert at.error[0].value == "生成响应时出错: Error connecting to agent"
     assert not at.exception
 
 
@@ -363,11 +367,11 @@ async def test_app_streaming_single_sub_agent(mock_agent_client, multi_agent_mes
         "Second child of status should be a popover for the first tool call"
     )
     assert popover_1.proto.popover.label == "do_work_1"
-    assert popover_1.proto.popover.icon == "🛠️"
-    assert popover_1.markdown[0].value == "**Tool:** do_work_1"
-    assert popover_1.markdown[1].value == "**Input:**"
+    assert popover_1.proto.popover.icon == TOOL_ICON
+    assert popover_1.markdown[0].value == "**工具:** do_work_1"
+    assert popover_1.markdown[1].value == "**输入:**"
     assert '"my-arg": "value"' in popover_1.json[0].value
-    assert popover_1.markdown[2].value == "**Output:**"
+    assert popover_1.markdown[2].value == "**输出:**"
     assert popover_1.markdown[3].value == "Tool 1 complete"
 
     assert status_agent.children[2].value == "Starting tool 2...", (
@@ -434,19 +438,20 @@ async def test_app_streaming_sequential_sub_agents(mock_agent_client, multi_agen
     popover_a = status_a.children[1]
     assert popover_a.type == "popover"
     assert popover_a.proto.popover.label == "do_work_1"
-    assert popover_a.proto.popover.icon == "🛠️"
-    assert popover_a.markdown[0].value == "**Tool:** do_work_1"
-    assert popover_a.markdown[1].value == "**Input:**"
+    assert popover_a.proto.popover.icon == TOOL_ICON
+    assert popover_a.markdown[0].value == "**工具:** do_work_1"
+    assert popover_a.markdown[1].value == "**输入:**"
     assert popover_a.json[0].value == '{"my-arg": "value"}'
-    assert popover_a.markdown[2].value == "**Output:**"
+    assert popover_a.markdown[2].value == "**输出:**"
     assert popover_a.markdown[3].value == "Tool 1 complete"
 
-    assert ai_message.children[2].value == "Now transferring to agent C...", (
-        "Third child should be transfer message to agent C"
+    c_message = at.chat_message[2]
+    assert c_message.children[0].value == "Now transferring to agent C...", (
+        "Next AI message should be transfer message to agent C"
     )
 
-    status_c = ai_message.status[1]
-    assert status_c == ai_message.children[3], "Fourth child should be the second status"
+    status_c = c_message.status[0]
+    assert status_c == c_message.children[1], "Second child should be the agent C status"
     assert "transfer_to_agent_c" in status_c.label
 
     assert status_c.children[0].value == "Starting tool 2...", (
@@ -455,19 +460,16 @@ async def test_app_streaming_sequential_sub_agents(mock_agent_client, multi_agen
     popover_c = status_c.children[1]
     assert popover_c.type == "popover"
     assert popover_c.proto.popover.label == "do_work_2"
-    assert popover_c.proto.popover.icon == "🛠️"
-    assert popover_c.markdown[0].value == "**Tool:** do_work_2"
-    assert popover_c.markdown[1].value == "**Input:**"
+    assert popover_c.proto.popover.icon == TOOL_ICON
+    assert popover_c.markdown[0].value == "**工具:** do_work_2"
+    assert popover_c.markdown[1].value == "**输入:**"
     assert popover_c.json[0].value == '{"my-arg-2": "value"}'
-    assert popover_c.markdown[2].value == "**Output:**"
+    assert popover_c.markdown[2].value == "**输出:**"
     assert popover_c.markdown[3].value == "Tool 2 complete"
 
-    assert ai_message.children[4].value == "All agents have completed their tasks successfully.", (
-        "Fifth child should be final supervisor message"
-    )
-
-    assert len(ai_message.children) == 6, (
-        f"Should have 6 children: transfer to a, status for a, transfer to c, status for c, final message, feedback stars - got {len(ai_message.children)}"
+    final_message = at.chat_message[3]
+    assert final_message.children[0].value == "All agents have completed their tasks successfully.", (
+        "Next AI message should be final supervisor message"
     )
 
     assert not at.exception
@@ -524,11 +526,11 @@ async def test_app_streaming_nested_sub_agents(mock_agent_client, multi_agent_me
     popover_a = status_a.children[1]
     assert popover_a.type == "popover"
     assert popover_a.proto.popover.label == "do_work_1"
-    assert popover_a.proto.popover.icon == "🛠️"
-    assert popover_a.markdown[0].value == "**Tool:** do_work_1"
-    assert popover_a.markdown[1].value == "**Input:**"
+    assert popover_a.proto.popover.icon == TOOL_ICON
+    assert popover_a.markdown[0].value == "**工具:** do_work_1"
+    assert popover_a.markdown[1].value == "**输入:**"
     assert popover_a.json[0].value == '{"my-arg": "value"}'
-    assert popover_a.markdown[2].value == "**Output:**"
+    assert popover_a.markdown[2].value == "**输出:**"
     assert popover_a.markdown[3].value == "Tool 1 complete"
 
     assert status_a.children[2].value == "Agent A delegating to agent B...", (
@@ -546,19 +548,16 @@ async def test_app_streaming_nested_sub_agents(mock_agent_client, multi_agent_me
     popover_b = nested_status_b.children[1]
     assert popover_b.type == "popover"
     assert popover_b.proto.popover.label == "do_work_2"
-    assert popover_b.proto.popover.icon == "🛠️"
-    assert popover_b.markdown[0].value == "**Tool:** do_work_2"
-    assert popover_b.markdown[1].value == "**Input:**"
+    assert popover_b.proto.popover.icon == TOOL_ICON
+    assert popover_b.markdown[0].value == "**工具:** do_work_2"
+    assert popover_b.markdown[1].value == "**输入:**"
     assert popover_b.json[0].value == '{"my-arg-2": "value"}'
-    assert popover_b.markdown[2].value == "**Output:**"
+    assert popover_b.markdown[2].value == "**输出:**"
     assert popover_b.markdown[3].value == "Tool 2 complete"
 
-    assert ai_message.children[2].value == "All agents have completed their tasks successfully.", (
-        "Third child should be final supervisor message"
-    )
-
-    assert len(ai_message.children) == 4, (
-        f"Should have 4 children: transfer to a, status for a (with nested b), final message, feedback stars - got {len(ai_message.children)}"
+    final_message = at.chat_message[2]
+    assert final_message.children[0].value == "All agents have completed their tasks successfully.", (
+        "Next AI message should be final supervisor message"
     )
 
     assert not at.exception

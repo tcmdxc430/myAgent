@@ -79,6 +79,39 @@ async def main() -> None:
                 height: 0%;
                 position: fixed;
             }
+
+        section[data-testid="stSidebar"] [data-testid="stExpander"] details > summary {
+                align-items: center !important;
+                display: flex !important;
+                justify-content: center !important;
+                position: relative !important;
+        }
+
+        section[data-testid="stSidebar"] [data-testid="stExpander"] details > summary [data-testid="stExpanderToggleIcon"],
+        section[data-testid="stSidebar"] [data-testid="stExpander"] details > summary > svg:first-child {
+                left: 1rem !important;
+                position: absolute !important;
+        }
+
+        section[data-testid="stSidebar"] [data-testid="stExpander"] details > summary [data-testid="stMarkdownContainer"],
+        section[data-testid="stSidebar"] [data-testid="stExpander"] details > summary > div:last-child {
+                box-sizing: border-box !important;
+                display: flex !important;
+                justify-content: center !important;
+                padding: 0 2rem !important;
+                text-align: center !important;
+                width: 100% !important;
+        }
+
+        section[data-testid="stSidebar"] [data-testid="stExpander"] details > summary [data-testid="stMarkdownContainer"] p,
+        section[data-testid="stSidebar"] [data-testid="stExpander"] details > summary > div:last-child p {
+                align-items: center !important;
+                display: flex !important;
+                gap: 0.35rem !important;
+                justify-content: center !important;
+                margin: 0 !important;
+                width: 100% !important;
+        }
         </style>
         """,
     )
@@ -258,8 +291,7 @@ async def main() -> None:
             case "research-assistant":
                 WELCOME = "你好！我是 AI 驱动的研究助手，拥有网页搜索和计算器功能。问我任何问题吧！"
             case "rag-assistant":
-                WELCOME = """你好！我是 AI 驱动的公司政策和人力资源助手，可以访问 AcmeTech 的员工手册。
-                我可以帮你查找有关福利、远程办公、休假政策、公司价值观等信息。问我任何问题吧！"""
+                WELCOME = "你好！我是rag本地知识库"
             case "data-analyst-assistant":
                 WELCOME = """你好！我是你的专属 AI 数据分析科学家。⚙️
                 请先在左侧边栏上传你的 CSV 文件，然后告诉我你想要进行什么分析、画什么图表，或者让我直接为你做一份全面分析！"""

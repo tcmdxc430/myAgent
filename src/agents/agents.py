@@ -21,6 +21,7 @@ from agents.sql_assistant import sql_assistant
 from agents.structured_output_agent import structured_output_agent
 from agents.technical_report_agent import technical_report_agent
 from schema import AgentInfo
+from agents.external_anp_client_agent import external_anp_client_agent
 
 DEFAULT_AGENT = "research-assistant"
 
@@ -89,6 +90,10 @@ agents: dict[str, Agent] = {
     "technical-report-agent": Agent(
         description="一个基于已导入网页 URL 或文档知识库撰写政策合规型技术报告的智能体。",
         graph_like=technical_report_agent,
+    ),
+    "external-anp-client-agent": Agent(
+        description="通过 ANP 发现并调用独立外部 Agent 的协作助手。",
+        graph_like=external_anp_client_agent,
     ),
 }
 

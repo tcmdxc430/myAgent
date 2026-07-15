@@ -10,7 +10,7 @@ from typing import Annotated, Any
 from uuid import UUID, uuid4
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, Depends, FastAPI, HTTPException, Query, status
+from fastapi import APIRouter, Depends, FastAPI, HTTPException, Query, Request, status
 from fastapi.responses import StreamingResponse
 from fastapi.routing import APIRoute
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -26,6 +26,7 @@ from langsmith import Client as LangsmithClient
 from langsmith import uuid7
 
 from agents import DEFAULT_AGENT, AgentGraph, get_agent, get_all_agent_info, load_agent
+from anp_adapter import anp_router
 from core import settings
 from ingestion import (
     ArticleImporter,
@@ -44,9 +45,9 @@ from schema import (
     ChatMessage,
     Feedback,
     FeedbackResponse,
-    QbitaiHotNewsImportResponse,
     IngestedArticleDetail,
     IngestedArticleListResponse,
+    QbitaiHotNewsImportResponse,
     ServiceMetadata,
     StreamInput,
     UserInput,
@@ -171,6 +172,16 @@ router = APIRouter(dependencies=[Depends(verify_bearer)])
 xhs_importer = XhsImporter()
 article_importer = ArticleImporter()
 qbitai_hot_news_importer = QbitaiHotNewsImporter()
+
+
+@app.middleware("http")
+async def add_anp_json_charset(request: Request, call_next):
+    """Make ANP JSON responses decode correctly in Windows PowerShell 5.1."""
+    response = await call_next(request)
+    content_type = response.headers.get("content-type", "")
+    if request.url.path.startswith("/anp/") and content_type == "application/json":
+        response.headers["content-type"] = "application/json; charset=utf-8"
+    return response
 
 
 @router.get("/info")
@@ -572,3 +583,4 @@ async def health_check():
 
 
 app.include_router(router)
+app.include_router(anp_router)

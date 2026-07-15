@@ -62,6 +62,16 @@ def format_contexts(docs):
         source_url = doc.metadata.get("source_url")
         title = doc.metadata.get("title")
         article_id = doc.metadata.get("article_id")
+        page_number = doc.metadata.get("page_number")
+        section_title = doc.metadata.get("section_title")
+        if not page_number:
+            page_match = re.search(r"【PDF 第 (\d+) 页】", doc.page_content)
+            if page_match:
+                page_number = int(page_match.group(1))
+        if not section_title:
+            section_match = re.search(r"【章节：([^】]+)】", doc.page_content)
+            if section_match:
+                section_title = section_match.group(1)
         if article_id in articles:
             article = articles[article_id]
             title = article.get("title") or title
@@ -69,6 +79,10 @@ def format_contexts(docs):
         # Extract just the filename if it's a full path
         source_name = source.split("\\")[-1].split("/")[-1]
         header = f"--- Source {i+1}: {title or source_name} ---"
+        if page_number:
+            header += f"\nPage: {page_number}"
+        if section_title:
+            header += f"\nSection: {section_title}"
         if source_url:
             header += f"\nURL: {source_url}"
         item = f"{header}\n{doc.page_content}"
@@ -98,7 +112,7 @@ def _load_rag_articles(article_ids: list[str]) -> dict[str, dict[str, str]]:
         return {}
 
 
-def load_chroma_db():
+def load_chroma_db(k: int = 12):
     # 使用 HuggingFace 的本地向量模型
     try:
         embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
@@ -109,7 +123,7 @@ def load_chroma_db():
 
     # Load the stored vector database
     chroma_db = Chroma(persist_directory="./chroma_db", embedding_function=embeddings)
-    retriever = chroma_db.as_retriever(search_kwargs={"k": 8})
+    retriever = chroma_db.as_retriever(search_kwargs={"k": k})
     return retriever
 
 
@@ -121,7 +135,11 @@ def database_search_func(query: str) -> str:
     # Search the database for relevant documents
     keyword_documents = _load_keyword_rag_documents(query)
     vector_documents = retriever.invoke(query)
-    documents = _merge_retrieved_documents(keyword_documents + vector_documents)
+    documents = _merge_retrieved_documents(
+        keyword_documents + vector_documents,
+        limit=12,
+        diversify_articles=_is_catalog_query(query),
+    )
 
     # Format the documents into a string
     context_str = format_contexts(documents)
@@ -129,17 +147,28 @@ def database_search_func(query: str) -> str:
     return context_str
 
 
-def _load_keyword_rag_documents(query: str, limit: int = 5) -> list[Document]:
+def _load_keyword_rag_documents(query: str, limit: int | None = None) -> list[Document]:
     if settings.DATABASE_TYPE != "postgres":
         return []
     terms = _query_terms(query)
     if not terms:
         return []
+    catalog_query = _is_catalog_query(query)
+    if limit is None:
+        limit = 12 if catalog_query else 8
 
     conditions = []
-    params: list[str | int] = []
+    score_expressions = []
+    score_params: list[str] = []
+    where_params: list[str] = []
     for term in terms:
         like = f"%{term}%"
+        score_expressions.append(
+            "(CASE WHEN a.title ILIKE %s THEN 12 ELSE 0 END + "
+            "CASE WHEN c.chunk_text ILIKE %s THEN 4 ELSE 0 END + "
+            "CASE WHEN a.combined_text ILIKE %s THEN 1 ELSE 0 END)"
+        )
+        score_params.extend([like, like, like])
         conditions.extend(
             [
                 "a.title ILIKE %s",
@@ -147,15 +176,21 @@ def _load_keyword_rag_documents(query: str, limit: int = 5) -> list[Document]:
                 "c.chunk_text ILIKE %s",
             ]
         )
-        params.extend([like, like, like])
-    params.append(limit)
+        where_params.extend([like, like, like])
+    relevance_sql = " + ".join(score_expressions)
 
     try:
         with psycopg.connect(get_postgres_connection_string()) as conn:
             with conn.cursor() as cur:
+                order_sql = (
+                    "article_rank ASC, relevance DESC, updated_at DESC, chunk_index ASC"
+                    if catalog_query
+                    else "relevance DESC, updated_at DESC, chunk_index ASC"
+                )
                 cur.execute(
                     f"""
-                    SELECT
+                    WITH scored AS (
+                        SELECT
                         c.chunk_text,
                         c.chunk_id,
                         c.chunk_index,
@@ -163,14 +198,26 @@ def _load_keyword_rag_documents(query: str, limit: int = 5) -> list[Document]:
                         a.title,
                         a.canonical_url,
                         a.source_platform,
-                        a.note_key
-                    FROM rag_chunks c
-                    JOIN rag_articles a ON a.article_id = c.article_id
-                    WHERE {" OR ".join(conditions)}
-                    ORDER BY a.updated_at DESC, c.chunk_index ASC
+                        a.note_key,
+                        a.updated_at,
+                        {relevance_sql} AS relevance
+                        FROM rag_chunks c
+                        JOIN rag_articles a ON a.article_id = c.article_id
+                        WHERE {" OR ".join(conditions)}
+                    ), ranked AS (
+                        SELECT *, ROW_NUMBER() OVER (
+                            PARTITION BY article_id
+                            ORDER BY relevance DESC, chunk_index ASC
+                        ) AS article_rank
+                        FROM scored
+                    )
+                    SELECT chunk_text, chunk_id, chunk_index, article_id, title,
+                           canonical_url, source_platform, note_key
+                    FROM ranked
+                    ORDER BY {order_sql}
                     LIMIT %s
                     """,
-                    params,
+                    [*score_params, *where_params, limit],
                 )
                 return [
                     Document(
@@ -193,11 +240,50 @@ def _load_keyword_rag_documents(query: str, limit: int = 5) -> list[Document]:
 
 
 def _query_terms(query: str) -> list[str]:
-    terms = []
-    stripped = query.strip()
+    terms: list[str] = []
+    stripped = re.sub(r"[？?！!，,。；;：:]", " ", query).strip()
     if len(stripped) >= 2:
         terms.append(stripped)
-    terms.extend(re.findall(r"[A-Za-z0-9_#\-\u4e00-\u9fff]{2,}", query))
+    cleaned = _clean_search_query(stripped)
+    if len(cleaned) >= 2:
+        terms.append(cleaned)
+    blocks = re.findall(r"[A-Za-z0-9_#\-\u4e00-\u9fff]{2,}", query)
+    terms.extend(blocks)
+
+    split_pattern = r"(?:是什么|有哪些|为什么|怎么样|如何|怎么|怎样|以及|并且|其中|请问|的|和|与|及)"
+    segments = [segment for segment in re.split(split_pattern, stripped) if len(segment) >= 2]
+    terms.extend(segments)
+
+    generic_prefixes = ("请介绍", "请说明", "介绍", "说明", "关于", "人工智能", "智能体")
+    generic_suffixes = (
+        "你了解什么",
+        "了解什么",
+        "介绍一下",
+        "说明一下",
+        "标准化架构",
+        "架构",
+        "流程",
+        "机制",
+        "要求",
+        "规范",
+        "定义",
+        "内容",
+        "步骤",
+        "原则",
+        "国标",
+    )
+    for segment in [*segments, cleaned]:
+        for prefix in generic_prefixes:
+            if segment.startswith(prefix) and len(segment) - len(prefix) >= 2:
+                terms.append(segment[len(prefix) :])
+        for suffix in generic_suffixes:
+            if segment.endswith(suffix) and len(segment) - len(suffix) >= 2:
+                terms.append(segment[: -len(suffix)])
+    if "智能体互联" in stripped:
+        terms.append("智能体互联")
+    standard_code = re.search(r"GB\s*/?\s*Z\s*\d+(?:\s*\.\s*\d+)?", query, re.IGNORECASE)
+    if standard_code:
+        terms.append(re.sub(r"\s+", " ", standard_code.group(0)).upper())
     deduped = []
     seen = set()
     for term in terms:
@@ -206,10 +292,42 @@ def _query_terms(query: str) -> list[str]:
             continue
         seen.add(term)
         deduped.append(term[:80])
-    return deduped[:8]
+    return deduped[:16]
 
 
-def _merge_retrieved_documents(documents: list[Document]) -> list[Document]:
+def _clean_search_query(query: str) -> str:
+    cleaned = re.sub(r"^(?:请问|请|麻烦|帮我|我想知道|关于)+", "", query).strip()
+    cleaned = re.sub(
+        r"(?:你了解什么|了解什么|是什么|有哪些|介绍一下|说明一下|说说|概述一下|总结一下)$",
+        "",
+        cleaned,
+    ).strip()
+    return cleaned
+
+
+def _is_catalog_query(query: str) -> bool:
+    compact = re.sub(r"\s+", "", query)
+    if re.search(r"(?:标准系列|系列标准|全部|完整|总览|概述|有哪些|了解什么|都包括|包含哪些)", compact):
+        return True
+    specific_parts = (
+        "总体架构",
+        "身份码",
+        "身份管理",
+        "智能体描述",
+        "智能体发现",
+        "智能体交互",
+        "工具调用",
+    )
+    asks_about_series = "智能体互联" in compact and ("国标" in compact or "标准" in compact)
+    return asks_about_series and not any(part in compact for part in specific_parts)
+
+
+def _merge_retrieved_documents(
+    documents: list[Document],
+    *,
+    limit: int = 12,
+    diversify_articles: bool = False,
+) -> list[Document]:
     merged = []
     seen = set()
     for doc in documents:
@@ -218,7 +336,20 @@ def _merge_retrieved_documents(documents: list[Document]) -> list[Document]:
             continue
         seen.add(key)
         merged.append(doc)
-    return merged[:8]
+    if not diversify_articles:
+        return merged[:limit]
+
+    diversified = []
+    remaining = []
+    seen_articles = set()
+    for doc in merged:
+        article_key = doc.metadata.get("article_id") or doc.metadata.get("source_url")
+        if article_key and article_key not in seen_articles:
+            seen_articles.add(article_key)
+            diversified.append(doc)
+        else:
+            remaining.append(doc)
+    return (diversified + remaining)[:limit]
 
 
 database_search: BaseTool = tool(database_search_func)

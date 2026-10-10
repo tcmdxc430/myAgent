@@ -108,6 +108,8 @@ class Settings(BaseSettings):
     # MCP Configuration
     GITHUB_PAT: SecretStr | None = None
     MCP_GITHUB_SERVER_URL: str = "https://api.githubcopilot.com/mcp/"
+    LEENEXUS_URL: str = "http://127.0.0.1:8000"
+    LEENEXUS_TOKEN: SecretStr | None = None
 
     LANGCHAIN_TRACING_V2: bool = False
     LANGCHAIN_PROJECT: str = "default"

@@ -8,12 +8,14 @@ from agents.chatbot import chatbot
 from agents.chinese_assistant import chinese_assistant
 from agents.command_agent import command_agent
 from agents.data_analyst_agent import data_analyst_agent
+from agents.external_anp_client_agent import external_anp_client_agent
 from agents.github_mcp_agent.github_mcp_agent import github_mcp_agent
 from agents.interrupt_agent import interrupt_agent
 from agents.knowledge_base_agent import kb_agent
 from agents.langgraph_supervisor_agent import langgraph_supervisor_agent
 from agents.langgraph_supervisor_hierarchy_agent import langgraph_supervisor_hierarchy_agent
 from agents.lazy_agent import LazyLoadingAgent
+from agents.leenexus_git_agent import leenexus_git_agent
 from agents.rag_assistant import rag_assistant
 from agents.reflective_agent import reflective_agent
 from agents.research_assistant import research_assistant
@@ -21,7 +23,6 @@ from agents.sql_assistant import sql_assistant
 from agents.structured_output_agent import structured_output_agent
 from agents.technical_report_agent import technical_report_agent
 from schema import AgentInfo
-from agents.external_anp_client_agent import external_anp_client_agent
 
 DEFAULT_AGENT = "research-assistant"
 
@@ -71,6 +72,10 @@ agents: dict[str, Agent] = {
     "github-mcp-agent": Agent(
         description="一个带有 MCP 工具的 GitHub 智能体，用于仓库管理和开发工作流。",
         graph_like=github_mcp_agent,
+    ),
+    "leenexus-git-agent": Agent(
+        description="通过本机 LeeNexus 查询 Git 状态，用 calc: 调用计算器，或用 workorder: 提交需审批的工单。",
+        graph_like=leenexus_git_agent,
     ),
     "chinese-assistant": Agent(
         description="一个简洁、务实的中文助手。", graph_like=chinese_assistant

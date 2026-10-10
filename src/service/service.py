@@ -55,6 +55,7 @@ from schema import (
     XhsIngestResponse,
     XhsLoginResponse,
 )
+from service.leenexus_a2a import router as leenexus_a2a_router
 from service.utils import (
     convert_message_content_to_string,
     langchain_to_chat_message,
@@ -584,3 +585,4 @@ async def health_check():
 
 app.include_router(router)
 app.include_router(anp_router)
+app.include_router(leenexus_a2a_router, dependencies=[Depends(verify_bearer)])
